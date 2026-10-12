@@ -176,6 +176,11 @@ export async function respond(ctx, id, approve, note) {
   return Visitor.findById(visitor._id).populate(POPULATE).lean();
 }
 
+// Guard turns a waiting visitor away (household said no on the phone, or nobody is home).
+export function guardSendBack(ctx, id, note) {
+  return respond(ctx, id, false, note || 'Sent back by guard');
+}
+
 // Guard override, e.g. resident confirmed on a phone call.
 export async function guardCheckIn(ctx, id, note) {
   const visitor = await getForAction(ctx, id);

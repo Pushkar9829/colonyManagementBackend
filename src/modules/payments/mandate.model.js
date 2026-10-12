@@ -11,9 +11,16 @@ const mandateSchema = new mongoose.Schema(
     method: { type: String, enum: ['upi', 'enach'], default: 'upi' },
     maxAmount: { type: Number, required: true, min: 100 }, // paise; bills above this are left for manual payment
     provider: { type: String, required: true },
-    tokenId: { type: String, required: true },
+    // Set once the resident has authorised the mandate; a 'pending' sign-up may not have one yet.
+    tokenId: { type: String, required() { return this.status === 'active'; } },
     customerId: { type: String },
-    status: { type: String, enum: ['active', 'cancelled'], default: 'active' },
+    // pending: sign-up started, or authorised and waiting for the bank (e-NACH takes a few days)
+    status: { type: String, enum: ['pending', 'active', 'cancelled', 'failed'], default: 'active' },
+    providerOrderId: String, // the authorisation order (sign-up)
+    authPaymentId: String,
+    authAmount: { type: Number, default: 0 }, // paise debited to authorise (UPI ₹1), credited as advance
+    authorisedMax: Number, // paise; the bank will refuse debits above the limit the resident authorised
+    confirmedAt: Date,
     lastChargedAt: Date,
     lastResult: { type: String, enum: ['success', 'failed', 'pending', 'skipped'] },
     lastError: { type: String },
@@ -25,5 +32,7 @@ const mandateSchema = new mongoose.Schema(
 // At most one live mandate per unit, so a bill is never charged twice.
 mandateSchema.index({ society: 1, unit: 1 }, { unique: true, partialFilterExpression: { status: 'active' } });
 mandateSchema.index({ society: 1, status: 1 });
+mandateSchema.index({ providerOrderId: 1 }, { partialFilterExpression: { providerOrderId: { $type: 'string' } } });
+mandateSchema.index({ tokenId: 1 });
 
 export default mongoose.model('AutopayMandate', mandateSchema);

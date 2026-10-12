@@ -43,7 +43,30 @@ async function openBill(ctx, billId) {
 // Settles a received payment. Money goes to the bill (if any) up to its balance; with `allowExcess`
 // the rest is held as advance credit instead of being refused. Advance-only payments have no bill.
 // Issues the receipt, notifies and emails the household. Used by offline, online and autopay flows.
-export async function settlePayment(ctx, payment, bill, { allowExcess = false } = {}) {
+// Safe to call twice for one payment (checkout verify and the provider webhook): only one applies it.
+export async function settlePayment(ctx, payment, bill, opts) {
+  if (payment.isNew) return applySettlement(ctx, payment, bill, opts); // offline: saved only if it succeeds
+  const claim = await Payment.updateOne({ _id: payment._id, status: { $in: ['created', 'failed'] }, settling: { $ne: true } }, { settling: true });
+  if (!claim.modifiedCount) {
+    // The other caller is recording it: wait briefly for its result.
+    for (let i = 0; i < 30; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const current = await Payment.findById(payment._id).populate(POPULATE).lean();
+      if (current?.status === 'success') return current;
+      if (!current?.settling) break;
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw ApiError.conflict('This payment is already being recorded');
+  }
+  try {
+    return await applySettlement(ctx, payment, bill, opts);
+  } finally {
+    await Payment.updateOne({ _id: payment._id }, { $unset: { settling: 1 } });
+  }
+}
+
+async function applySettlement(ctx, payment, bill, { allowExcess = false } = {}) {
   let applied = 0;
   let excess = 0;
   for (let attempt = 0; ; attempt += 1) {
@@ -169,11 +192,28 @@ export async function verifyOnline(ctx, { orderId, paymentId, signature }) {
     await payment.save();
     throw ApiError.badRequest('Payment verification failed');
   }
+  return captureOnline(ctx, payment, paymentId);
+}
+
+async function captureOnline(ctx, payment, paymentId) {
   payment.providerPaymentId = paymentId;
   payment.paidAt = new Date();
+  await Payment.updateOne({ _id: payment._id }, { providerPaymentId: paymentId, paidAt: payment.paidAt });
   const bill = payment.bill ? await Bill.findById(payment.bill).lean() : null;
   // The money is already captured: if the bill was paid meanwhile (e.g. offline), keep the surplus as advance.
   return settlePayment(ctx, payment, bill, { allowExcess: true });
+}
+
+// Provider webhook: the order's payment was captured (the webhook body's signature is already checked).
+// Covers residents who paid but closed the app before verify ran. Returns false for unknown orders.
+export async function captureByOrder({ orderId, paymentId }) {
+  const payment = await Payment.findOne({ providerOrderId: orderId, method: 'online' });
+  if (!payment) return false;
+  if (['created', 'failed'].includes(payment.status)) {
+    const ctx = { societyId: payment.society, userId: payment.paidBy, role: ROLES.RESIDENT, unitId: payment.unit, ip: 'webhook' };
+    await captureOnline(ctx, payment, paymentId);
+  }
+  return true;
 }
 
 // Dev-only helper standing in for the provider checkout: returns a valid mock payment id + signature.

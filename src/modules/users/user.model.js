@@ -1,6 +1,20 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+// Secrets are AES-GCM sealed (common/utils/secretBox.js); backup codes are keyed hashes, removed when used.
+const mfaSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    secret: String,
+    pendingSecret: String, // set by /auth/mfa/setup until confirmed with a code
+    pendingCreatedAt: Date,
+    backupCodes: { type: [String], default: undefined },
+    lastUsedStep: Number, // last accepted TOTP time step, so a code can't be replayed inside its window
+    enabledAt: Date,
+  },
+  { _id: false },
+);
+
 // A person's login. What they can do in a society lives on Membership (one per society role / flat).
 const userSchema = new mongoose.Schema(
   {
@@ -17,6 +31,10 @@ const userSchema = new mongoose.Schema(
       email: { type: Boolean, default: true },
     },
     lastLoginAt: Date,
+    // Two-step verification (TOTP). Whole subdocument is select:false — read it only with .select('+mfa').
+    mfa: { type: mfaSchema, select: false },
+    // Set when the account was anonymised after an approved deletion request (privacy module).
+    anonymisedAt: Date,
   },
   { timestamps: true },
 );
@@ -33,6 +51,7 @@ userSchema.statics.hashPassword = (password) => bcrypt.hash(password, 10);
 userSchema.set('toJSON', {
   transform: (_doc, ret) => {
     delete ret.passwordHash;
+    delete ret.mfa;
     delete ret.__v;
     return ret;
   },

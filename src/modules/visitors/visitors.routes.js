@@ -46,6 +46,7 @@ router.post('/', authorize(GUARD), validate({ body: schema.logEntry }), controll
 router.post('/:id/approve', authorize(RESIDENT), validate({ params: schema.idParams, body: schema.respond }), controller.approve);
 router.post('/:id/deny', authorize(RESIDENT), validate({ params: schema.idParams, body: schema.respond }), controller.deny);
 router.post('/:id/check-in', authorize(GUARD), validate({ params: schema.idParams, body: schema.respond }), controller.guardCheckIn);
+router.post('/:id/send-back', authorize(GUARD), validate({ params: schema.idParams, body: schema.respond }), controller.guardSendBack);
 router.post('/:id/check-out', authorize(GUARD), validate({ params: schema.idParams, body: schema.checkOut }), controller.checkOut);
 router.get('/:id/contacts', authorize(GUARD), validate({ params: schema.idParams }), controller.contacts);
 

@@ -23,6 +23,8 @@ if (env.PAYMENT_PROVIDER === 'mock') {
 router.get('/autopay', authorize(RESIDENT), controller.myAutopay);
 router.post('/autopay', authorize(RESIDENT), validate({ body: schema.optIn }), controller.optIn);
 router.delete('/autopay', authorize(RESIDENT), controller.cancelMine);
+router.post('/autopay/start', authorize(RESIDENT), validate({ body: schema.startMandate }), controller.startMandate);
+router.post('/autopay/confirm', authorize(RESIDENT), validate({ body: schema.confirmMandate }), controller.confirmMandate);
 router.get('/mandates', authorize(ACCOUNTANT), validate({ query: schema.listMandates }), controller.mandates);
 router.post('/mandates/:id/cancel', authorize(ACCOUNTANT), validate({ params: schema.idParams }), controller.cancelMandate);
 

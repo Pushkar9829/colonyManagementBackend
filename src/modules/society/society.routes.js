@@ -11,5 +11,7 @@ router.get('/me', controller.getMine);
 router.patch('/me', authorize(), validate({ body: schema.updateProfile }), controller.updateProfile);
 router.patch('/me/settings', authorize(), validate({ body: schema.updateSettings }), controller.updateSettings);
 router.post('/me/regenerate-code', authorize(), controller.regenerateCode);
+router.get('/setup-status', authorize(), controller.setupStatus);
+router.post('/setup-status/dismiss', authorize(), controller.dismissSetup);
 
 export default router;

@@ -36,18 +36,24 @@ export async function openOrder(ctx, { booking, pass, amenity, unit, charges, re
 }
 
 // Verifies the gateway signature and marks every charge of the order paid. Returns the records.
-export async function settleOrder(ctx, { orderId, paymentId, signature }) {
+// `trusted`: the provider webhook already proved the capture, so there is no checkout signature.
+// Only one caller wins the update, so a checkout verify racing the webhook is applied once.
+export async function settleOrder(ctx, { orderId, paymentId, signature }, { trusted = false } = {}) {
   const records = await AmenityPayment.find({ society: ctx.societyId, providerOrderId: orderId, user: ctx.userId });
   if (!records.length) throw ApiError.notFound('Order not found');
   if (records.every((r) => r.status === 'success')) return { records, alreadyPaid: true };
-  if (records.some((r) => r.status !== 'created')) throw ApiError.conflict('This order can no longer be paid');
-  if (!(await provider.verify({ orderId, paymentId, signature }))) {
+  // A captured payment is real money even if a bad checkout signature marked the order failed.
+  if (records.some((r) => r.status !== 'created' && !(trusted && r.status === 'failed'))) throw ApiError.conflict('This order can no longer be paid');
+  if (!trusted && !(await provider.verify({ orderId, paymentId, signature }))) {
     await AmenityPayment.updateMany({ _id: { $in: records.map((r) => r._id) } }, { status: 'failed' });
     throw ApiError.badRequest('Payment verification failed');
   }
-  const paidAt = new Date();
-  await AmenityPayment.updateMany({ _id: { $in: records.map((r) => r._id) } }, { status: 'success', providerPaymentId: paymentId, paidAt });
-  return { records: await AmenityPayment.find({ _id: { $in: records.map((r) => r._id) } }), alreadyPaid: false };
+  const ids = records.map((r) => r._id);
+  const res = await AmenityPayment.updateMany(
+    { _id: { $in: ids }, status: { $in: trusted ? ['created', 'failed'] : ['created'] } },
+    { status: 'success', providerPaymentId: paymentId, paidAt: new Date() },
+  );
+  return { records: await AmenityPayment.find({ _id: { $in: ids } }), alreadyPaid: res.modifiedCount === 0 };
 }
 
 // Desk payment recorded by a manager.

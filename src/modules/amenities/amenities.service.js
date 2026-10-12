@@ -11,6 +11,7 @@ import * as audit from '../audit/audit.service.js';
 import { money } from '../../common/utils/money.js';
 import * as pay from './amenityPayment.service.js';
 import * as passes from './passes.service.js';
+import AmenityPass from './amenityPass.model.js';
 
 const MIN = 60 * 1000;
 const HOLD_MINUTES = 15; // time to finish an online payment for an instantly bookable slot
@@ -328,11 +329,26 @@ export async function confirmPaidBooking(ctx, bookingId) {
 }
 
 // One verify endpoint for every amenity checkout: settles the order, then confirms its booking or pass.
-export async function verifyPayment(ctx, body) {
-  const { records } = await pay.settleOrder(ctx, body);
+export async function verifyPayment(ctx, body, opts) {
+  const { records, alreadyPaid } = await pay.settleOrder(ctx, body, opts);
   const first = records[0];
+  if (alreadyPaid) {
+    // settled by the other caller (checkout verify or webhook): report the state without re-applying it
+    if (first.booking) return { kind: 'booking', booking: await reloadBooking(first.booking) };
+    return { kind: 'pass', pass: await AmenityPass.findById(first.pass).lean() };
+  }
   if (first.booking) return { kind: 'booking', booking: await confirmPaidBooking(ctx, first.booking) };
   return { kind: 'pass', pass: await passes.activatePaidPass(ctx, first.pass) };
+}
+
+// Provider webhook: an amenity order was captured. Returns false for unknown orders.
+export async function captureByOrder({ orderId, paymentId }) {
+  const record = await AmenityPayment.findOne({ providerOrderId: orderId }).lean();
+  if (!record) return false;
+  if (record.status !== 'created' && record.status !== 'failed') return true;
+  const ctx = { societyId: record.society, userId: record.user, role: ROLES.RESIDENT, unitId: record.unit, ip: 'webhook' };
+  await verifyPayment(ctx, { orderId, paymentId }, { trusted: true });
+  return true;
 }
 
 // Pay-at-desk bookings: the office records the money.

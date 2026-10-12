@@ -5,6 +5,7 @@ import pinoHttp from 'pino-http';
 import env from './config/env.js';
 import logger from './common/utils/logger.js';
 import routes from './routes.js';
+import paymentWebhooks from './modules/payments/webhook.routes.js';
 import { UPLOAD_DIR } from './integrations/storage.js';
 import { sanitize } from './common/middleware/sanitize.js';
 import { globalLimiter } from './common/middleware/rateLimit.js';
@@ -21,8 +22,8 @@ export function createApp() {
   app.use(
     cors({
       origin(origin, cb) {
-        // Allow non-browser clients (no Origin) and the configured frontends.
-        if (!origin || env.corsOrigins.includes(origin)) return cb(null, true);
+        // Allow non-browser clients (no Origin), any site when CORS_ORIGINS='*', or the configured frontends.
+        if (!origin || env.allowAllOrigins || env.corsOrigins.includes(origin)) return cb(null, true);
         return cb(null, false);
       },
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
@@ -31,6 +32,8 @@ export function createApp() {
       maxAge: 600,
     }),
   );
+  // Payment webhooks verify a signature over the raw body, so they are mounted before the JSON parser.
+  app.use('/api/v1/payments/webhook', paymentWebhooks);
   app.use(express.json({ limit: '1mb' }));
   app.use(sanitize);
   if (!env.isTest) app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url.endsWith('/health') } }));

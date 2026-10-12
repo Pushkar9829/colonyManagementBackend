@@ -18,6 +18,9 @@ export async function authenticate(req, _res, next) {
       throw new ApiError(401, 'TOKEN_INVALID', 'Access token is invalid or expired');
     }
     req.user = await loadPrincipal(payload.sub, payload.mid);
+    if (req.user.mfaSetupRequired && !req.originalUrl.split('?')[0].startsWith('/api/v1/auth/')) {
+      throw new ApiError(403, 'MFA_SETUP_REQUIRED', 'Turn on two-step verification to continue');
+    }
     next();
   } catch (err) {
     next(err);

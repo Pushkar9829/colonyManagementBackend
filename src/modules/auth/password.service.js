@@ -40,7 +40,7 @@ export async function requestReset(rawEmail) {
     text: `Hi ${user.name},\n\nUse this link within 30 minutes to choose a new password:\n${link}\n\nIf you didn't ask for this, ignore this email — your password stays the same.\n`,
   });
   // Dev convenience: with the console email provider there is no inbox, so return the link.
-  return { message: GENERIC, ...(email.name === 'console' && !env.isProd ? { devLink: link } : {}) };
+  return { message: GENERIC, ...(email.name === 'console' && (!env.isProd || env.DEMO_MODE) ? { devLink: link } : {}) };
 }
 
 // Sends a "set your password" email to an account created by an admin or an import.
@@ -54,7 +54,7 @@ export async function sendInvite(userId, societyName) {
     subject: `You're invited to ${societyName} on ColonyHub`,
     text: `Hi ${user.name},\n\n${societyName} has added you to ColonyHub. Set your password here (valid for 7 days):\n${link}\n\nYou can also log in with an SMS code if your phone number is registered.\n`,
   });
-  return email.name === 'console' && !env.isProd ? link : null;
+  return email.name === 'console' && (!env.isProd || env.DEMO_MODE) ? link : null;
 }
 
 export async function checkToken(token) {

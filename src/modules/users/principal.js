@@ -4,11 +4,13 @@ import Society from '../society/society.model.js';
 import ApiError from '../../common/errors/ApiError.js';
 import { ROLES } from '../../common/constants/index.js';
 
+const MFA_POLICY_ROLES = [ROLES.ADMIN, ROLES.ACCOUNTANT];
+
 // Builds the request principal from a token's (user, membership) pair.
 // Shape matches what services read via ctx(): { _id, society, role, unit, ... }.
 export async function loadPrincipal(userId, membershipId) {
-  const user = await User.findById(userId).lean();
-  if (!user || user.status !== 'active') throw ApiError.unauthorized('Account is not active');
+  const { mfa, ...user } = (await User.findById(userId).select('+mfa').lean()) || {};
+  if (!user._id || user.status !== 'active') throw ApiError.unauthorized('Account is not active');
 
   if (!membershipId) {
     // Platform session (no society) — only for the SaaS owner.
@@ -19,7 +21,7 @@ export async function loadPrincipal(userId, membershipId) {
   const m = await Membership.findOne({ _id: membershipId, user: user._id }).lean();
   if (!m || m.status !== 'active') throw ApiError.unauthorized('This membership is not active');
   if (m.expiresAt && m.expiresAt < new Date()) throw ApiError.unauthorized('This support session has ended');
-  const society = await Society.findById(m.society).select('active').lean();
+  const society = await Society.findById(m.society).select('active settings.security').lean();
   if (!society?.active) throw new ApiError(403, 'SOCIETY_SUSPENDED', 'This society account is suspended. Contact support.');
 
   return {
@@ -30,6 +32,9 @@ export async function loadPrincipal(userId, membershipId) {
     residentType: m.residentType,
     designation: m.designation,
     membershipId: m._id,
+    // Society policy: admins and accountants must turn on two-step verification before using the app
+    // (support sessions are exempt). authenticate() then allows only the /auth endpoints.
+    mfaSetupRequired: Boolean(society.settings?.security?.requireMfa) && MFA_POLICY_ROLES.includes(m.role) && !m.support && !mfa?.enabled,
   };
 }
 

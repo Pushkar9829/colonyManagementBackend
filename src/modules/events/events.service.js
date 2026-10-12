@@ -433,21 +433,43 @@ export async function createOrder(ctx, id) {
   return { ...order, provider: provider.name, title: event.title };
 }
 
-export async function verifyPayment(ctx, { orderId, paymentId, signature }) {
+// `trusted`: called from the provider webhook, which already proved the capture.
+export async function verifyPayment(ctx, { orderId, paymentId, signature }, { trusted = false } = {}) {
   const ticket = await EventTicket.findOne({ society: ctx.societyId, providerOrderId: orderId, user: ctx.userId });
   if (!ticket) throw ApiError.notFound('Order not found');
   const r = await EventRsvp.findById(ticket.rsvp).lean();
   if (ticket.status === 'success') return { ticket: ticket.toObject(), rsvp: presentRsvp(r) }; // idempotent
-  if (!(await provider.verify({ orderId, paymentId, signature }))) {
+  if (!trusted && !(await provider.verify({ orderId, paymentId, signature }))) {
     ticket.status = 'failed';
     await ticket.save();
     throw ApiError.badRequest('Payment verification failed');
+  }
+  // Claim the ticket so a checkout verify racing the webhook settles it once.
+  const claimed = await EventTicket.findOneAndUpdate(
+    { _id: ticket._id, status: { $in: ['created', 'failed'] }, providerPaymentId: { $exists: false } },
+    { providerPaymentId: paymentId },
+    { returnDocument: 'after' },
+  );
+  if (!claimed) {
+    const current = await EventTicket.findById(ticket._id).lean();
+    return { ticket: current, rsvp: presentRsvp(await EventRsvp.findById(ticket.rsvp).lean()) };
   }
   ticket.providerPaymentId = paymentId;
   ticket.paidAt = new Date();
   const updated = await settleTicket(ctx, ticket, r);
   invalidate(ctx.societyId, ['events'], { roles: ['facility_manager'] });
   return { ticket: ticket.toObject(), rsvp: presentRsvp(updated) };
+}
+
+// Provider webhook: an event ticket order was captured. Returns false for unknown orders.
+export async function captureByOrder({ orderId, paymentId }) {
+  const ticket = await EventTicket.findOne({ providerOrderId: orderId }).lean();
+  if (!ticket) return false;
+  if (ticket.status === 'created' || ticket.status === 'failed') {
+    const ctx = { societyId: ticket.society, userId: ticket.user, role: 'resident', unitId: null, ip: 'webhook' };
+    await verifyPayment(ctx, { orderId, paymentId }, { trusted: true });
+  }
+  return true;
 }
 
 // Dev-only stand-in for the provider checkout (mirrors /payments/mock/sign).

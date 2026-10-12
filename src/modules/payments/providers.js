@@ -10,6 +10,10 @@ import ApiError from '../../common/errors/ApiError.js';
 //   chargeRecurring({ amount, tokenId, customerId, receipt, notes, email, contact })
 //       -> { status: 'captured' | 'pending' | 'failed', orderId?, paymentId?, error? }
 //   fetchPayment(paymentId) -> { status: 'captured' | 'pending' | 'failed', error? }
+// Mandate sign-up (the resident authorises it once in the provider's checkout):
+//   startMandate({ maxAmount, method, user, receipt }) -> { orderId, customerId, amount, currency, keyId? }
+//   confirmMandate({ orderId, paymentId, signature, customerId })
+//       -> { tokenId, customerId, status: 'active' | 'pending' | 'failed', authAmount, error? }
 
 const hex = () => crypto.randomBytes(8).toString('hex');
 
@@ -37,6 +41,17 @@ const mock = {
   async fetchPayment() {
     return { status: 'captured' };
   },
+  async startMandate({ method }) {
+    return { orderId: `mock_order_${hex()}`, customerId: `mock_cust_${hex()}`, amount: method === 'upi' ? 100 : 0, currency: 'INR' };
+  },
+  async confirmMandate({ orderId, paymentId, signature, customerId }) {
+    if (!(await this.verify({ orderId, paymentId, signature }))) return { status: 'failed', error: 'Mandate authorisation could not be verified' };
+    return { tokenId: `mock_tok_${hex()}`, customerId, status: 'active' };
+  },
+  async tokenForPayment(_paymentId, customerId) {
+    return { tokenId: `mock_tok_${hex()}`, customerId, status: 'active' };
+  },
+  async cancelToken() {},
 };
 
 const rzpAuth = () => `Basic ${Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString('base64')}`;
@@ -66,11 +81,8 @@ const razorpay = {
   // The mandate itself is authorised by the resident in Razorpay Checkout (an "authorisation
   // transaction" with a customer_id and recurring=1). Razorpay then issues a token (token_xxx) for that
   // customer (cust_xxx). Those two ids are what this adapter stores; it does not run the checkout itself.
-  async registerMandate({ tokenId, customerId }) {
-    if (!tokenId || !customerId) {
-      throw ApiError.badRequest('Authorise the mandate in Razorpay Checkout first, then send its tokenId and customerId');
-    }
-    return { tokenId, customerId };
+  async registerMandate() {
+    throw ApiError.badRequest('Set up autopay through the bank authorisation step (Set up autopay)');
   },
   // Charges a subsequent payment on an existing token: create an order, then
   // POST /v1/payments/create/recurring. Razorpay settles recurring debits asynchronously, so the result is
@@ -100,12 +112,59 @@ const razorpay = {
     if (json.status === 'failed') return { status: 'failed', error: json.error_description || 'Payment failed' };
     return { status: 'pending' };
   },
+
+  // Authorisation transaction: a customer plus an order carrying the token terms. Checkout is then opened
+  // with { order_id, customer_id, recurring: '1' }. UPI AutoPay authorises with a ₹1 debit (credited to the
+  // home as advance); e-NACH authorises with ₹0 and the bank confirms the mandate a few days later.
+  async startMandate({ maxAmount, method, user, receipt }) {
+    const cust = await rzp('POST', '/customers', { name: user.name, email: user.email, contact: user.phone, fail_existing: '0' });
+    if (!cust.ok) throw new ApiError(502, 'PAYMENT_PROVIDER_ERROR', cust.json?.error?.description || 'Could not create the payment customer');
+    const amount = method === 'upi' ? 100 : 0;
+    const expireAt = Math.floor(Date.now() / 1000) + 10 * 365 * 86400;
+    const order = await rzp('POST', '/orders', {
+      amount,
+      currency: 'INR',
+      customer_id: cust.json.id,
+      method: method === 'upi' ? 'upi' : 'emandate',
+      payment_capture: true,
+      receipt,
+      token: { max_amount: maxAmount, expire_at: expireAt, frequency: 'as_presented' },
+    });
+    if (!order.ok) throw new ApiError(502, 'PAYMENT_PROVIDER_ERROR', order.json?.error?.description || 'Could not start the mandate');
+    return { orderId: order.json.id, customerId: cust.json.id, amount, currency: 'INR', keyId: env.RAZORPAY_KEY_ID };
+  },
+  async confirmMandate({ orderId, paymentId, signature, customerId }) {
+    if (!(await this.verify({ orderId, paymentId, signature }))) return { status: 'failed', error: 'Mandate authorisation could not be verified' };
+    return this.tokenForPayment(paymentId, customerId);
+  },
+  // Reads the token a recurring authorisation payment created, and whether the bank has confirmed it.
+  async tokenForPayment(paymentId, customerId) {
+    const pay = await rzp('GET', `/payments/${encodeURIComponent(paymentId)}`);
+    const tokenId = pay.json?.token_id;
+    if (!pay.ok || !tokenId) return { status: 'failed', error: 'No mandate was created for this payment' };
+    const cust = pay.json.customer_id || customerId;
+    const tok = await rzp('GET', `/customers/${encodeURIComponent(cust)}/tokens/${encodeURIComponent(tokenId)}`);
+    const state = tok.json?.recurring_details?.status;
+    if (state === 'rejected' || state === 'cancelled') return { status: 'failed', tokenId, customerId: cust, error: tok.json?.recurring_details?.failure_reason || 'The bank rejected the mandate' };
+    return { tokenId, customerId: cust, status: state === 'confirmed' ? 'active' : 'pending', authAmount: pay.json.status === 'captured' ? pay.json.amount : 0 };
+  },
+  // Stops the bank honouring further debits. Best effort: the mandate is already off on our side.
+  async cancelToken({ tokenId, customerId }) {
+    if (!tokenId || !customerId) return;
+    await rzp('DELETE', `/customers/${encodeURIComponent(customerId)}/tokens/${encodeURIComponent(tokenId)}`);
+  },
 };
 
 function safeEqual(a, b) {
   const x = Buffer.from(String(a));
   const y = Buffer.from(String(b));
   return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+// Razorpay signs webhook bodies with HMAC-SHA256(raw body, webhook secret) in X-Razorpay-Signature.
+export function verifyWebhookSignature(rawBody, signature, secret) {
+  if (!secret || !signature) return false;
+  return safeEqual(crypto.createHmac('sha256', secret).update(rawBody).digest('hex'), signature);
 }
 
 export const provider = env.PAYMENT_PROVIDER === 'razorpay' ? razorpay : mock;

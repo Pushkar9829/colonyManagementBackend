@@ -31,6 +31,7 @@ const paymentSchema = new mongoose.Schema(
     bounceReason: { type: String, trim: true },
     bouncedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     notes: String,
+    settling: Boolean, // claimed by settlePayment, so a client retry and a webhook can't both apply it
   },
   { timestamps: true },
 );

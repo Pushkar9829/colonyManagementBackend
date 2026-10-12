@@ -4,6 +4,7 @@ import { ctx } from '../../common/utils/context.js';
 import * as service from './auth.service.js';
 import * as passwords from './password.service.js';
 import * as sessions from './sessions.service.js';
+import * as mfa from './mfa.service.js';
 
 const meta = (req) => ({ ip: req.ip, userAgent: req.headers['user-agent'] });
 
@@ -46,3 +47,11 @@ export const startSupportSession = asyncHandler(async (req, res) => {
   const m = await sessions.startSupportSession(ctx(req), req.body.societyId, req.body.reason);
   ok(res, await service.switchMembership(ctx(req), m._id, meta(req)));
 });
+
+// Two-step verification (TOTP authenticator app + backup codes).
+export const mfaStatus = asyncHandler(async (req, res) => ok(res, await mfa.status(ctx(req))));
+export const mfaSetup = asyncHandler(async (req, res) => ok(res, await mfa.setup(ctx(req))));
+export const mfaEnable = asyncHandler(async (req, res) => ok(res, await mfa.enable(ctx(req), req.body.code)));
+export const mfaDisable = asyncHandler(async (req, res) => ok(res, await mfa.disable(ctx(req), req.body)));
+export const mfaBackupCodes = asyncHandler(async (req, res) => ok(res, await mfa.regenerateBackupCodes(ctx(req), req.body.code)));
+export const mfaVerify = asyncHandler(async (req, res) => ok(res, await service.loginWithMfa(req.body, meta(req))));

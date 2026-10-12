@@ -30,4 +30,12 @@ router.post('/homes', authenticate, validate({ body: schema.addHome }), controll
 router.patch('/me', authenticate, validate({ body: schema.updateMe }), controller.updateMe);
 router.post('/change-password', authenticate, validate({ body: schema.changePassword }), controller.changePassword);
 
+// Two-step verification. Code-checking endpoints share the auth rate limit; verify also locks per mfaToken.
+router.post('/mfa/verify', authLimiter, validate({ body: schema.mfaVerify }), controller.mfaVerify);
+router.get('/mfa', authenticate, controller.mfaStatus);
+router.post('/mfa/setup', authenticate, controller.mfaSetup);
+router.post('/mfa/enable', authLimiter, authenticate, validate({ body: schema.mfaCode }), controller.mfaEnable);
+router.post('/mfa/disable', authLimiter, authenticate, validate({ body: schema.mfaDisable }), controller.mfaDisable);
+router.post('/mfa/backup-codes', authLimiter, authenticate, validate({ body: schema.mfaCode }), controller.mfaBackupCodes);
+
 export default router;

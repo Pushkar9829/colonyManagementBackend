@@ -53,8 +53,13 @@ export const bounce = z.object({
 export const optIn = z.object({
   maxAmount: z.coerce.number().int().min(100).max(10_000_000), // paise
   method: z.enum(['upi', 'enach']).optional(),
-  tokenId: z.string().trim().min(5).max(80).optional(),
-  customerId: z.string().trim().min(5).max(80).optional(),
 });
 
-export const listMandates = pageQuery.extend({ status: z.enum(['active', 'cancelled']).optional() });
+export const startMandate = z.object({
+  maxAmount: z.coerce.number().int().min(100).max(10_000_000), // paise
+  method: z.enum(['upi', 'enach']).optional(),
+});
+
+export const confirmMandate = verifyOnline;
+
+export const listMandates = pageQuery.extend({ status: z.enum(['pending', 'active', 'cancelled', 'failed']).optional() });

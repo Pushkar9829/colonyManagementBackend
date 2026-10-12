@@ -13,6 +13,7 @@ import Block from '../units/block.model.js';
 import Unit from '../units/unit.model.js';
 import RefreshToken from './refreshToken.model.js';
 import * as otp from './otp.service.js';
+import * as mfa from './mfa.service.js';
 import * as societyService from '../society/society.service.js';
 import * as usersService from '../users/users.service.js';
 import { defaultMembership } from '../users/principal.js';
@@ -60,8 +61,8 @@ const MEMBERSHIP_POPULATE = [
 
 // The signed-in person, the membership currently open, and every membership they can switch to.
 export async function profile(userId, membershipId) {
-  const user = await User.findById(userId).select('name email phone status platformRole notificationPrefs lastLoginAt').lean();
-  if (!user) throw ApiError.notFound('User not found');
+  const { mfa: mfaState, ...user } = (await User.findById(userId).select('name email phone status platformRole notificationPrefs lastLoginAt mfa.enabled').lean()) || {};
+  if (!user._id) throw ApiError.notFound('User not found');
   const memberships = await Membership.find({
     user: userId,
     status: { $in: ['active', 'pending'] },
@@ -71,8 +72,11 @@ export async function profile(userId, membershipId) {
     .sort({ createdAt: 1 })
     .lean();
   const current = memberships.find((m) => String(m._id) === String(membershipId));
+  const mfaEnabled = Boolean(mfaState?.enabled);
   return {
     ...user,
+    mfaEnabled,
+    mfaSetupRequired: !mfaEnabled && (await societyRequiresMfa(current)),
     // flat fields for the current context (what the UI reads everywhere)
     membershipId: current?._id || null,
     role: current ? current.role : ROLES.SUPER_ADMIN,
@@ -94,8 +98,18 @@ export async function profile(userId, membershipId) {
   };
 }
 
-// Chooses where a user lands after authenticating.
-async function loginUser(user, meta) {
+// Society policy: admins and accountants must use two-step verification. Platform support sessions are governed
+// by the platform, not the society, so they are exempt.
+const MFA_POLICY_ROLES = [ROLES.ADMIN, ROLES.ACCOUNTANT];
+async function societyRequiresMfa(membership) {
+  if (!membership || membership.support || !MFA_POLICY_ROLES.includes(membership.role)) return false;
+  const society = await Society.findById(membership.society?._id || membership.society).select('settings.security').lean();
+  return Boolean(society?.settings?.security?.requireMfa);
+}
+
+// Chooses where a user lands after authenticating. With two-step verification on, the first factor only earns a
+// short-lived mfaToken; POST /auth/mfa/verify finishes the login.
+async function loginUser(user, meta, { via, secondFactorDone = false } = {}) {
   if (user.status !== 'active') throw new ApiError(403, 'ACCOUNT_INACTIVE', 'Your account is not active');
   const membership = await defaultMembership(user);
   if (!membership && user.platformRole !== 'super_admin') {
@@ -103,6 +117,7 @@ async function loginUser(user, meta) {
     if (pending) throw new ApiError(403, 'PENDING_APPROVAL', 'Your request is waiting for society admin approval');
     throw new ApiError(403, 'NO_MEMBERSHIP', 'Your account is not linked to any active society');
   }
+  if (!secondFactorDone && (await mfa.isEnabled(user._id))) return mfa.issueChallenge(user._id, via);
   await User.updateOne({ _id: user._id }, { lastLoginAt: new Date(), lastMembership: membership?._id });
   return sessionFor(user._id, membership?._id, meta);
 }
@@ -112,11 +127,18 @@ export async function login({ identifier, password }, meta) {
   const user = await User.findOne(id.includes('@') ? { email: id } : { phone: identifier }).select('+passwordHash');
   // Same message for unknown user and wrong password to avoid account enumeration.
   if (!user || !(await user.verifyPassword(password))) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid credentials');
-  return loginUser(user, meta);
+  return loginUser(user, meta, { via: 'password' });
 }
 
 export async function loginWithOtp({ phone, code }, meta) {
-  return loginUser(await otp.verifyLoginOtp(phone, code), meta);
+  return loginUser(await otp.verifyLoginOtp(phone, code), meta, { via: 'otp' });
+}
+
+export async function loginWithMfa({ mfaToken, code, backupCode }, meta) {
+  const userId = await mfa.verifyChallenge(mfaToken, { code, backupCode });
+  const user = await User.findById(userId);
+  if (!user) throw new ApiError(401, 'MFA_TOKEN_INVALID', 'Your sign-in has expired. Please log in again.');
+  return loginUser(user, meta, { secondFactorDone: true });
 }
 
 export const requestOtp = ({ phone }) => otp.requestLoginOtp(phone);

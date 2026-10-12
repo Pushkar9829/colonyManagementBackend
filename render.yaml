@@ -1,0 +1,38 @@
+# Render Blueprint for the ColonyHub API (this repo) — demo setup.
+# Render → New → Blueprint → pick this repo. It asks for one value: MONGODB_URI.
+# No Redis, no Cloudinary, no SMS/email/WhatsApp/payment accounts needed:
+#   - payments use the built-in mock gateway, messages are printed to the Render log,
+#   - uploads are stored on the service's own disk (wiped on each deploy — fine for a demo),
+#   - DEMO_MODE shows one-time login codes and reset links on screen.
+# For a real society switch these to real providers (see DEPLOYMENT.md, section 4).
+services:
+  - type: web
+    name: colony-management-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22
+      - key: MONGODB_URI
+        sync: false # mongodb+srv://<user>:<password>@cluster0.mnas5tb.mongodb.net/colony_management?retryWrites=true&w=majority
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: '*' # any website may call the API (it uses bearer tokens, not cookies)
+      - key: DEMO_MODE
+        value: 'true'
+      - key: STORAGE_PROVIDER
+        value: local
+      - key: PAYMENT_PROVIDER
+        value: mock
+      - key: SMS_PROVIDER
+        value: console
+      - key: EMAIL_PROVIDER
+        value: console
+      - key: WHATSAPP_PROVIDER
+        value: console

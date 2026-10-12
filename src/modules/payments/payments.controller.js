@@ -26,6 +26,8 @@ export const emailReceipt = asyncHandler(async (req, res) => ok(res, await servi
 export const bounce = asyncHandler(async (req, res) => ok(res, await service.bounce(ctx(req), req.params.id, req.body)));
 
 export const myAutopay = asyncHandler(async (req, res) => ok(res, await autopay.mine(ctx(req))));
+export const startMandate = asyncHandler(async (req, res) => created(res, await autopay.start(ctx(req), req.body)));
+export const confirmMandate = asyncHandler(async (req, res) => ok(res, await autopay.confirm(ctx(req), req.body)));
 export const optIn = asyncHandler(async (req, res) => ok(res, await autopay.optIn(ctx(req), req.body)));
 export const cancelMine = asyncHandler(async (req, res) => ok(res, await autopay.cancel(ctx(req))));
 export const cancelMandate = asyncHandler(async (req, res) => ok(res, await autopay.cancel(ctx(req), req.params.id)));

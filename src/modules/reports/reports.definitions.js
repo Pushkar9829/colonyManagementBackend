@@ -108,8 +108,8 @@ export const REPORTS = [
   },
   {
     key: 'complaints',
-    label: 'Complaints & SLA',
-    description: 'Helpdesk tickets raised in a date range, with SLA outcome and resolution time.',
+    label: 'Complaints & resolution time',
+    description: 'Complaints raised in a date range, whether each was fixed on time, and how long it took.',
     roles: OPS,
     params: ['from', 'to', 'status'],
     columns: [

@@ -69,3 +69,12 @@ export const resetPassword = z.object({ token: z.string().min(20).max(200), pass
 export const currentSession = z.object({ refreshToken: z.string().min(20).optional() });
 export const sessionParams = z.object({ family: z.string().uuid() });
 export const supportSession = z.object({ societyId: objectId(), reason: z.string().trim().max(200).optional() });
+
+// ---- two-step verification ----
+const totpCode = () => z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code from your app');
+const backupCode = () => z.string().trim().min(8).max(20);
+export const mfaCode = z.object({ code: totpCode() });
+export const mfaDisable = z.object({ password: z.string().min(1).max(72), code: z.string().trim().min(6).max(20) });
+export const mfaVerify = z
+  .object({ mfaToken: z.string().min(20).max(2000), code: totpCode().optional(), backupCode: backupCode().optional() })
+  .refine((v) => Boolean(v.code) !== Boolean(v.backupCode), { message: 'Enter the code from your app or a backup code', path: ['code'] });

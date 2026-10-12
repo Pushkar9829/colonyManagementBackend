@@ -46,7 +46,7 @@ export async function requestLoginOtp(phone) {
   );
   await sms.send(phone, `${code} is your ColonyHub login code. It expires in 5 minutes. Do not share it.`);
   // Dev convenience: with the console SMS provider there is no phone, so hand the code back.
-  return { message: GENERIC, ...(sms.name === 'console' && !env.isProd ? { devCode: code } : {}) };
+  return { message: GENERIC, ...(sms.name === 'console' && (!env.isProd || env.DEMO_MODE) ? { devCode: code } : {}) };
 }
 
 // Returns the user id when the code is right; throws otherwise.

@@ -13,12 +13,19 @@ const schema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_ACCESS_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
-  CORS_ORIGINS: z.string().default('http://localhost:5173'),
+  // Browsers allowed to call the API. '*' (the default) allows any site: the API uses bearer tokens, not cookies.
+  CORS_ORIGINS: z.string().default('*'),
+  // Demo deployments: show one-time login codes and reset links on screen (no SMS/email provider needed)
+  // and build database indexes on start-up. Never enable for a real society.
+  DEMO_MODE: z.stringbool().default(false),
   PAYMENT_PROVIDER: z.enum(['mock', 'razorpay']).default('mock'),
   RAZORPAY_KEY_ID: z.string().optional().default(''),
   RAZORPAY_KEY_SECRET: z.string().optional().default(''),
+  // Razorpay dashboard → Webhooks secret; the webhook endpoint is off while this is empty
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
   // Public base URL of this API (used for locally stored upload links)
-  PUBLIC_URL: z.string().default('http://localhost:5000'),
+  // Render sets RENDER_EXTERNAL_URL itself, so a Render deploy needs no PUBLIC_URL.
+  PUBLIC_URL: z.string().default(process.env.RENDER_EXTERNAL_URL || 'http://localhost:5000'),
   ENABLE_JOBS: z.stringbool().default(true),
   // SMS: console (logs to server output) | twilio
   SMS_PROVIDER: z.enum(['console', 'twilio']).default('console'),
@@ -84,4 +91,5 @@ export default {
   isProd: env.NODE_ENV === 'production',
   isTest: env.NODE_ENV === 'test',
   corsOrigins: env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean),
+  allowAllOrigins: env.CORS_ORIGINS.split(',').map((o) => o.trim()).includes('*'),
 };

@@ -31,6 +31,9 @@ const societySchema = new mongoose.Schema(
         urgent: { type: Number, default: 4 },
       },
       visitorApprovalRequired: { type: Boolean, default: true },
+      security: {
+        requireMfa: { type: Boolean, default: false }, // admins and accountants must use two-step verification
+      },
     },
     active: { type: Boolean, default: true },
     // Set by the platform owner (super admin console)
@@ -40,6 +43,8 @@ const societySchema = new mongoose.Schema(
       unitLimit: { type: Number, default: 50 }, // null = unlimited
       validUntil: Date,
     },
+    // set when the admin hides the first-run setup checklist on the dashboard
+    setupChecklistDismissedAt: Date,
     suspendedReason: { type: String, trim: true },
     platformNotes: { type: String, trim: true },
   },

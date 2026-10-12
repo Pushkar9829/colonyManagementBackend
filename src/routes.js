@@ -23,6 +23,8 @@ import uploadRoutes from './modules/uploads/uploads.routes.js';
 import platformRoutes from './modules/platform/platform.routes.js';
 import deviceRoutes from './modules/devices/devices.routes.js';
 // ---- module route imports (add new modules below this line) ----
+import { meRouter as privacyMeRoutes, privacyRouter as privacyRoutes } from './modules/privacy/privacy.routes.js';
+import searchRoutes from './modules/search/search.routes.js';
 import { assetRouter, fireRouter } from './modules/assets/assets.routes.js';
 import { maintenanceRouter, workOrderRouter } from './modules/maintenance/maintenance.routes.js';
 import inventoryRoutes from './modules/inventory/inventory.routes.js';
@@ -105,6 +107,9 @@ router.use('/uploads', uploadRoutes);
 router.use('/platform', platformRoutes);
 router.use('/devices', deviceRoutes);
 // ---- module route mounts (add new modules below this line) ----
+router.use('/me', privacyMeRoutes);
+router.use('/privacy', privacyRoutes);
+router.use('/search', searchRoutes);
 router.use('/assets', gate('assets'), assetRouter);
 router.use('/fire-safety', fireRouter);
 router.use('/maintenance', gate('assets'), maintenanceRouter);

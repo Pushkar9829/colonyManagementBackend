@@ -382,7 +382,7 @@ async function openOrder(invoice, paidBy) {
   return { ...order, provider: provider.name, invoiceNumber: invoice.number };
 }
 
-async function verifyOrder(invoiceFilter, { orderId, paymentId, signature }, actorId) {
+async function verifyOrder(invoiceFilter, { orderId, paymentId, signature }, actorId, { trusted = false } = {}) {
   const payment = await SubscriptionPayment.findOne({ providerOrderId: orderId });
   if (!payment || !(await PlatformInvoice.exists({ ...invoiceFilter, _id: payment.invoice }))) throw ApiError.notFound('Order not found');
   if (payment.status === 'success') {
@@ -390,14 +390,28 @@ async function verifyOrder(invoiceFilter, { orderId, paymentId, signature }, act
     const sub = await Subscription.findOne({ society: payment.society }).lean();
     return { invoice: await PlatformInvoice.findById(payment.invoice).lean(), payment: payment.toObject(), paidUntil: sub?.paidUntil, reactivated: false };
   }
-  if (!(await provider.verify({ orderId, paymentId, signature }))) {
+  if (!trusted && !(await provider.verify({ orderId, paymentId, signature }))) {
     payment.status = 'failed';
     await payment.save();
     throw ApiError.badRequest('Payment verification failed');
   }
+  // Claim it so a checkout verify racing the webhook settles the invoice once.
+  const claimed = await SubscriptionPayment.updateOne({ _id: payment._id, status: { $ne: 'success' }, providerPaymentId: { $exists: false } }, { providerPaymentId: paymentId });
+  if (!claimed.modifiedCount) {
+    const sub = await Subscription.findOne({ society: payment.society }).lean();
+    return { invoice: await PlatformInvoice.findById(payment.invoice).lean(), payment: (await SubscriptionPayment.findById(payment._id).lean()), paidUntil: sub?.paidUntil, reactivated: false };
+  }
   payment.providerPaymentId = paymentId;
   payment.paidAt = new Date();
   return settle(payment, actorId);
+}
+
+// Provider webhook: a subscription invoice order was captured. Returns false for unknown orders.
+export async function captureByOrder({ orderId, paymentId }) {
+  const payment = await SubscriptionPayment.findOne({ providerOrderId: orderId }).lean();
+  if (!payment) return false;
+  if (payment.status !== 'success') await verifyOrder({}, { orderId, paymentId }, payment.paidBy, { trusted: true });
+  return true;
 }
 
 export async function createOrder(ctx, invoiceId) {

@@ -13,7 +13,7 @@ let io = null;
 
 export function attachRealtime(httpServer) {
   io = new Server(httpServer, {
-    cors: { origin: env.corsOrigins, methods: ['GET', 'POST'] },
+    cors: { origin: env.allowAllOrigins ? true : env.corsOrigins, methods: ['GET', 'POST'] },
     path: '/socket.io',
   });
 

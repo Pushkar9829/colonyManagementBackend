@@ -1,4 +1,5 @@
 import Society from './society.model.js';
+import User from '../users/user.model.js';
 import ApiError from '../../common/errors/ApiError.js';
 import { randomCode } from '../../common/utils/codes.js';
 import * as audit from '../audit/audit.service.js';
@@ -28,6 +29,11 @@ export async function updateProfile(ctx, data) {
 
 // Merges nested settings so partial updates don't wipe sibling keys.
 export async function updateSettings(ctx, data) {
+  // Requiring two-step verification blocks admins without it, so the admin turning it on must have it first.
+  if (data.security?.requireMfa) {
+    const me = await User.findById(ctx.userId).select('+mfa').lean();
+    if (!me?.mfa?.enabled) throw ApiError.conflict('Turn on two-step verification for your own account first (My profile → Two-step verification)');
+  }
   const set = {};
   for (const [group, values] of Object.entries(data)) {
     if (values && typeof values === 'object' && !Array.isArray(values)) {

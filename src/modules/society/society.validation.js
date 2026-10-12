@@ -33,4 +33,5 @@ export const updateSettings = z.object({
     })
     .optional(),
   visitorApprovalRequired: z.boolean().optional(),
+  security: z.object({ requireMfa: z.boolean().optional() }).optional(),
 });

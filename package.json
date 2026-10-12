@@ -10,6 +10,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "seed": "node scripts/seed.js",
+    "db:indexes": "node scripts/ensureIndexes.js",
     "create-super-admin": "node scripts/createSuperAdmin.js",
     "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
     "backup": "node scripts/backup.js",
