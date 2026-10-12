@@ -4,5 +4,6 @@ node_modules
 !.env.example
 coverage
 *.log
-uploads/
-backups/
+# runtime folders at the backend root only (not src/modules/uploads)
+/uploads/
+/backups/
