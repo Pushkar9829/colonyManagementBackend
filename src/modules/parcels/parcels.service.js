@@ -15,6 +15,7 @@ import { nextNumber } from '../counter/counter.service.js';
 import { notifyUnit } from '../notifications/notifications.service.js';
 import { invalidate } from '../../realtime/socket.js';
 import * as prefs from './deliveryPreferences.service.js';
+import * as gateSvc from '../gates/gates.service.js';
 
 const isResident = (ctx) => ctx.role === ROLES.RESIDENT;
 const OPEN = ['received', 'notified'];
@@ -32,8 +33,11 @@ async function hasResidents(societyId, unitId) {
   return Membership.exists({ society: societyId, unit: unitId, role: ROLES.RESIDENT, status: 'active' });
 }
 
-export async function create(ctx, { photo, visitorId, ...data }) {
+// A gate that takes no deliveries refuses the parcel.
+export async function create(ctx, { photo, visitorId, gateId, ...data }) {
   const unit = await units.assertUnit(ctx.societyId, data.unit);
+  const gate = await gateSvc.resolveGate(ctx, gateId);
+  await gateSvc.checkKind(ctx, gate, 'deliveries');
   const [file] = await uploads.resolve(ctx, photo ? [photo] : []);
   const pref = await prefs.findLeaveAtGate(ctx.societyId, unit._id, data.courier);
   const now = new Date();
@@ -46,6 +50,8 @@ export async function create(ctx, { photo, visitorId, ...data }) {
     otp: numericCode(4),
     leftAtGate: Boolean(pref),
     visitor: visitorId,
+    gate: gate._id,
+    gateName: gate.name,
     receivedBy: ctx.userId,
     receivedAt: now,
     status: notify ? 'notified' : 'received',
@@ -71,6 +77,7 @@ export async function list(ctx, filters, pagination) {
   else if (filters.unit) filter.unit = filters.unit;
   if (filters.status) filter.status = filters.status;
   else if (filters.open) filter.status = { $in: OPEN };
+  if (filters.gate) filter.gate = filters.gate;
   if (filters.olderThanHours) filter.receivedAt = { $lte: new Date(Date.now() - filters.olderThanHours * 3600000) };
   if (filters.search) {
     const rx = { $regex: escapeRegex(filters.search), $options: 'i' };

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import ExcelJS from 'exceljs';
 import Visitor from './visitor.model.js';
+import Gate from '../gates/gate.model.js';
 import { APP_TIMEZONE, addDays, localDateString, startOfLocalDay } from '../../common/utils/dates.js';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -15,11 +16,37 @@ function range({ from, to }) {
   return { start, end };
 }
 
+const hourOf = { $hour: { date: '$at', timezone: APP_TIMEZONE } };
+
+// Entries per entry gate with the busiest hour. Entries from before gates were set up have no gate.
+async function gateRows(rows) {
+  const ids = rows.map((r) => r._id).filter(Boolean);
+  const current = new Map((await Gate.find({ _id: { $in: ids } }).select('name code active').lean()).map((g) => [String(g._id), g]));
+  return rows.map((r) => {
+    const hours = Array(24).fill(0);
+    for (const h of r.hours) hours[h.hour] = h.count;
+    const peak = hours.reduce((best, c, i) => (c > hours[best] ? i : best), 0);
+    const gate = r._id ? current.get(String(r._id)) : null;
+    return {
+      gate: r._id || null,
+      name: gate?.name || r.name || 'Not recorded',
+      code: gate?.code || null,
+      active: gate ? gate.active : null,
+      count: r.count,
+      peakHour: r.count ? peak : null,
+      peakCount: hours[peak],
+      hours,
+    };
+  });
+}
+
 export async function summary(ctx, filters) {
   const { start, end } = range(filters);
   const society = new mongoose.Types.ObjectId(String(ctx.societyId));
+  const match = { society, createdAt: { $gte: addDays(start, -8), $lt: addDays(end, 1) } };
+  if (filters.gate) match.entryGate = new mongoose.Types.ObjectId(String(filters.gate));
   const [result] = await Visitor.aggregate([
-    { $match: { society, createdAt: { $gte: addDays(start, -8), $lt: addDays(end, 1) } } },
+    { $match: match },
     { $addFields: { at } },
     { $match: { at: { $gte: start, $lt: end } } },
     {
@@ -42,6 +69,11 @@ export async function summary(ctx, filters) {
         ],
         byPurpose: [{ $group: { _id: '$purpose', count: { $sum: 1 } } }, { $sort: { count: -1 } }],
         byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+        byGate: [
+          { $group: { _id: { gate: '$entryGate', hour: hourOf }, name: { $last: '$entryGateName' }, count: { $sum: 1 } } },
+          { $group: { _id: '$_id.gate', name: { $last: '$name' }, count: { $sum: '$count' }, hours: { $push: { hour: '$_id.hour', count: '$count' } } } },
+          { $sort: { count: -1 } },
+        ],
         perDay: [{ $group: { _id: { $dateToString: { date: '$at', format: '%Y-%m-%d', timezone: APP_TIMEZONE } }, count: { $sum: 1 } } }, { $sort: { _id: 1 } }],
         heatmap: [
           { $group: { _id: { dow: { $subtract: [{ $dayOfWeek: { date: '$at', timezone: APP_TIMEZONE } }, 1] }, hour: { $hour: { date: '$at', timezone: APP_TIMEZONE } } }, count: { $sum: 1 } } },
@@ -86,6 +118,7 @@ export async function summary(ctx, filters) {
     totals,
     byPurpose: result.byPurpose.map((r) => ({ purpose: r._id, count: r.count })),
     byStatus: result.byStatus.map((r) => ({ status: r._id, count: r.count })),
+    byGate: await gateRows(result.byGate),
     perDay: [...new Set(days)].map((date) => ({ date, count: perDayMap.get(date) || 0 })),
     heatmap: heat.map((hours, dow) => ({ dow, day: DAY_NAMES[dow], hours })),
     approval: { avgSeconds: approval ? Math.round(approval.avgMs / 1000) : null, maxSeconds: approval ? Math.round(approval.maxMs / 1000) : null, responses: approval?.n || 0 },
@@ -139,6 +172,16 @@ export async function exportWorkbook(ctx, filters) {
   data.byPurpose.forEach((r) => p.addRow(r));
   header(p);
 
+  const g = wb.addWorksheet('By gate');
+  g.columns = [
+    { header: 'Gate', key: 'name', width: 24 },
+    { header: 'Entries', key: 'count', width: 10 },
+    { header: 'Busiest hour', key: 'peak', width: 14 },
+    ...Array.from({ length: 24 }, (_, i) => ({ header: String(i).padStart(2, '0'), key: `h${i}`, width: 5 })),
+  ];
+  data.byGate.forEach((r) => g.addRow({ name: r.name, count: r.count, peak: r.peakHour == null ? '' : `${String(r.peakHour).padStart(2, '0')}:00`, ...Object.fromEntries(r.hours.map((c, i) => [`h${i}`, c])) }));
+  header(g);
+
   const t = wb.addWorksheet('Top visitors');
   t.columns = [{ header: 'Name', key: 'name', width: 26 }, { header: 'Phone', key: 'phone', width: 16 }, { header: 'Visits', key: 'visits', width: 8 }, { header: 'Last visit', key: 'lastAt', width: 20 }];
   data.topVisitors.forEach((r) => t.addRow({ ...r, lastAt: r.lastAt ? new Date(r.lastAt).toLocaleString('en-IN', { timeZone: APP_TIMEZONE }) : '' }));
@@ -154,12 +197,16 @@ export async function exportWorkbook(ctx, filters) {
     { header: 'Company', key: 'company', width: 14 },
     { header: 'Vehicle', key: 'vehicle', width: 12 },
     { header: 'Status', key: 'status', width: 12 },
+    { header: 'Entry gate', key: 'entryGate', width: 18 },
+    { header: 'Exit gate', key: 'exitGate', width: 18 },
     { header: 'Flag', key: 'flag', width: 8 },
     { header: 'Check in', key: 'in', width: 20 },
     { header: 'Check out', key: 'out', width: 20 },
   ];
   const fmt = (x) => (x ? new Date(x).toLocaleString('en-IN', { timeZone: APP_TIMEZONE }) : '');
-  const entries = await Visitor.find({ society: ctx.societyId, createdAt: { $gte: addDays(data.from, -8), $lt: addDays(data.to, 1) } })
+  const entryFilter = { society: ctx.societyId, createdAt: { $gte: addDays(data.from, -8), $lt: addDays(data.to, 1) } };
+  if (filters.gate) entryFilter.entryGate = filters.gate;
+  const entries = await Visitor.find(entryFilter)
     .sort({ createdAt: 1 })
     .limit(20000)
     .populate('unit', 'label')
@@ -167,7 +214,7 @@ export async function exportWorkbook(ctx, filters) {
   for (const v of entries) {
     const when = v.occurredAt || v.createdAt;
     if (when < data.from || when >= data.to) continue;
-    e.addRow({ time: fmt(when), unit: v.unit?.label, name: v.name, phone: v.phone, purpose: v.purpose, company: v.company, vehicle: v.vehicleNumber, status: v.status, flag: v.flag?.type || '', in: fmt(v.checkInAt), out: fmt(v.checkOutAt) });
+    e.addRow({ time: fmt(when), unit: v.unit?.label, name: v.name, phone: v.phone, purpose: v.purpose, company: v.company, vehicle: v.vehicleNumber, status: v.status, entryGate: v.entryGateName || '', exitGate: v.exitGateName || '', flag: v.flag?.type || '', in: fmt(v.checkInAt), out: fmt(v.checkOutAt) });
   }
   header(e);
 

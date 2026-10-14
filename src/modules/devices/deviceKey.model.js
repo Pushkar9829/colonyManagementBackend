@@ -11,6 +11,8 @@ const deviceKeySchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true }, // "Main gate ANPR camera"
     type: { type: String, enum: DEVICE_TYPES, default: 'other' },
     location: { type: String, trim: true },
+    // Gate the camera / reader / barrier stands at: its events and commands belong to this gate.
+    gate: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' },
     scopes: [{ type: String, enum: DEVICE_SCOPES }],
     prefix: { type: String, required: true }, // first chars, to recognise a key in lists/logs
     keyHash: { type: String, required: true, unique: true },

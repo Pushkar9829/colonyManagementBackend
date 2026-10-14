@@ -23,6 +23,8 @@ const guestPassSchema = new mongoose.Schema(
       startTime: String, // "HH:MM" local
       endTime: String,
     },
+    // Gates the pass may be used at; empty = any gate.
+    gates: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Gate' }],
     frequentVisitor: { type: mongoose.Schema.Types.ObjectId, ref: 'FrequentVisitor' },
     lastUsedAt: Date,
   },

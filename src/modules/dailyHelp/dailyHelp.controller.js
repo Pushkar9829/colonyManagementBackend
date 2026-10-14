@@ -19,7 +19,7 @@ export const attendance = asyncHandler(async (req, res) => {
   const { items, meta } = await service.attendance(ctx(req), req.params.id, getPagination(query(req)));
   ok(res, items, meta);
 });
-export const gateScan = asyncHandler(async (req, res) => ok(res, await service.gateScan(ctx(req), req.body.passcode)));
+export const gateScan = asyncHandler(async (req, res) => ok(res, await service.gateScan(ctx(req), req.body.passcode, { gateId: req.body.gateId })));
 
 export const getById = asyncHandler(async (req, res) => ok(res, await service.getById(ctx(req), req.params.id)));
 export const listReviews = asyncHandler(async (req, res) => {

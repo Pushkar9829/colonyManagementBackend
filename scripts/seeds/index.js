@@ -4,6 +4,7 @@
 //   s.membership(email) -> membership doc, s.unit(label) -> unit doc
 // Add one import line and one array entry per module.
 // ---- seed imports (add below this line) ----
+import gatesSeed from './gates.js';
 import platformTeamSeed from './platformTeam.js';
 import securitySeed from './security.js';
 import residentsSeed from './residents.js';
@@ -27,4 +28,5 @@ export const SEEDS = [
   accountsSeed,
   community,
   luckyDrawSeed,
+  gatesSeed, // last: spreads the visitors / movements seeded above over the gates
 ];

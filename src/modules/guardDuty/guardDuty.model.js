@@ -12,7 +12,8 @@ const handoverSchema = new mongoose.Schema(
   {
     society: { type: ObjectId, ref: 'Society', required: true },
     shift: { type: String, enum: SHIFTS, required: true },
-    gate: { type: String, trim: true, default: 'Main gate' },
+    gate: { type: String, trim: true, default: 'Main gate' }, // gate name (old handovers have only this)
+    gateId: { type: ObjectId, ref: 'Gate' },
     fromGuard: { type: ObjectId, ref: 'User', required: true },
     toGuard: { type: ObjectId, ref: 'User' },
     notes: { type: String, trim: true },

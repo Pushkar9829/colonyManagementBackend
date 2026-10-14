@@ -26,7 +26,7 @@ export const approve = asyncHandler(async (req, res) => ok(res, await service.re
 export const deny = asyncHandler(async (req, res) => ok(res, await service.respond(ctx(req), req.params.id, false, req.body?.note)));
 export const guardCheckIn = asyncHandler(async (req, res) => ok(res, await service.guardCheckIn(ctx(req), req.params.id, req.body?.note)));
 export const guardSendBack = asyncHandler(async (req, res) => ok(res, await service.guardSendBack(ctx(req), req.params.id, req.body?.note)));
-export const checkOut = asyncHandler(async (req, res) => ok(res, await service.checkOut(ctx(req), req.params.id, { occurredAt: req.body?.occurredAt })));
+export const checkOut = asyncHandler(async (req, res) => ok(res, await service.checkOut(ctx(req), req.params.id, { occurredAt: req.body?.occurredAt, gateId: req.body?.gateId })));
 export const contacts = asyncHandler(async (req, res) => ok(res, await service.householdContacts(ctx(req), req.params.id)));
 
 export const createPass = asyncHandler(async (req, res) => created(res, await service.createPass(ctx(req), req.body)));

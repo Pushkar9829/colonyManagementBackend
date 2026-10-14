@@ -15,6 +15,7 @@ import * as uploads from '../uploads/uploads.service.js';
 import * as vehicles from '../vehicles/vehicles.service.js';
 import * as deliveryPrefs from '../parcels/deliveryPreferences.service.js';
 import * as watchlist from './watchlist.service.js';
+import * as gateSvc from '../gates/gates.service.js';
 import { notifyRoles, notifyUnit } from '../notifications/notifications.service.js';
 import { invalidate } from '../../realtime/socket.js';
 import { eventTime, inWeeklyWindow, normalizePhone } from './gateTime.js';
@@ -51,14 +52,27 @@ function replay(existing) {
 }
 
 // ---------- gate entries ----------
-export async function logEntry(ctx, { photo, clientKey, occurredAt, guardApproved, ...data }) {
+const gateKind = (purpose) => (purpose === 'delivery' ? 'deliveries' : 'visitors');
+
+export async function logEntry(ctx, { photo, clientKey, occurredAt, guardApproved, gateId, ...data }) {
   const existing = await byClientKey(ctx, clientKey);
   if (existing) return replay(existing);
 
   const unit = await units.assertUnit(ctx.societyId, data.unit);
   const at = resolveTime(occurredAt);
+  const gate = await gateSvc.resolveGate(ctx, gateId);
   const [photoFile] = await uploads.resolve(ctx, photo ? [photo] : []);
-  const base = { ...data, photoUrl: photoFile?.url, society: ctx.societyId, loggedBy: ctx.userId, occurredAt: at, clientKey, offline: Boolean(clientKey && occurredAt) };
+  const base = {
+    ...data,
+    photoUrl: photoFile?.url,
+    society: ctx.societyId,
+    loggedBy: ctx.userId,
+    occurredAt: at,
+    clientKey,
+    offline: Boolean(clientKey && occurredAt),
+    entryGate: gate._id,
+    entryGateName: gate.name,
+  };
 
   // 1. Blocklist: refuse, keep a record, alert management.
   const hit = await watchlist.screen(ctx.societyId, data, at);
@@ -71,7 +85,12 @@ export async function logEntry(ctx, { photo, clientKey, occurredAt, guardApprove
     throw blockedError(data.name, hit.block.reason);
   }
 
-  // 2. Decide whether the household must approve.
+  // 2. Gate rules: e.g. a service gate takes no visitors. The guard may still let them in once the
+  //    resident confirmed by phone; that is kept as an override.
+  const rule = await gateSvc.checkKind(ctx, gate, gateKind(data.purpose), { withVehicle: Boolean(data.vehicleNumber), override: guardApproved });
+  if (rule) base.gateOverride = rule.override;
+
+  // 3. Decide whether the household must approve.
   let status = 'pending';
   let pref = null;
   let frequent = null;
@@ -82,7 +101,7 @@ export async function logEntry(ctx, { photo, clientKey, occurredAt, guardApprove
 
   if (pref) {
     // The delivery person leaves the parcel at the gate and does not go in.
-    Object.assign(extra, { leftAtGate: true, checkInAt: at, checkOutAt: at, note: 'Left at gate (household preference)' });
+    Object.assign(extra, { leftAtGate: true, checkInAt: at, checkOutAt: at, exitGate: gate._id, exitGateName: gate.name, note: 'Left at gate (household preference)' });
     status = 'checked_out';
   } else if (frequent?.autoApprove) {
     Object.assign(extra, { autoApproved: true, checkInAt: at, note: 'Auto-approved frequent visitor' });
@@ -140,6 +159,7 @@ export function list(ctx, filters, pagination) {
   else if (filters.unit) filter.unit = filters.unit;
   if (filters.status) filter.status = filters.status;
   if (filters.purpose) filter.purpose = filters.purpose;
+  if (filters.gate) filter.entryGate = filters.gate;
   if (filters.flagged === true) filter['flag.type'] = { $in: ['watch', 'block'] };
   if (filters.from || filters.to) {
     filter.createdAt = {};
@@ -197,11 +217,15 @@ export async function guardCheckIn(ctx, id, note) {
 }
 
 // `occurredAt` comes from the offline queue; it never goes before the check-in time.
-export async function checkOut(ctx, id, { occurredAt } = {}) {
+// Visitors may leave by any gate; the exit gate is recorded.
+export async function checkOut(ctx, id, { occurredAt, gateId } = {}) {
   const visitor = await getForAction(ctx, id);
   if (visitor.status === 'checked_out') throw ApiError.conflict(`Already checked out at ${visitor.checkOutAt?.toISOString() || 'an earlier time'}`);
   if (visitor.status !== 'checked_in') throw ApiError.conflict('Only visitors inside can be checked out');
   const at = resolveTime(occurredAt);
+  const gate = await gateSvc.resolveGate(ctx, gateId);
+  visitor.exitGate = gate._id;
+  visitor.exitGateName = gate.name;
   visitor.status = 'checked_out';
   visitor.checkOutAt = visitor.checkInAt && at < visitor.checkInAt ? visitor.checkInAt : at;
   await visitor.save();
@@ -241,16 +265,18 @@ function parseQr(qr) {
 
 const windowText = (r) => `${r.days.map((d) => DAY_NAMES[d]).join(', ')} ${r.startTime}–${r.endTime}`;
 
-export async function createPass(ctx, { recurrence, ...data }) {
+export async function createPass(ctx, { recurrence, gates = [], ...data }) {
   if (!ctx.unitId) throw ApiError.badRequest('Only residents linked to a unit can create passes');
   const pass = await GuestPass.create({
     ...data,
+    gates: await gateSvc.assertGateIds(ctx.societyId, gates),
     ...(recurrence ? { kind: 'recurring', recurrence: { ...recurrence, days: [...new Set(recurrence.days)].sort() }, maxUses: 1 } : {}),
     society: ctx.societyId,
     unit: ctx.unitId,
     createdBy: ctx.userId,
     code: await uniqueActiveCode(ctx.societyId),
   });
+  if (pass.gates.length) await pass.populate('gates', 'name code');
   return withQr(pass.toObject());
 }
 
@@ -261,7 +287,7 @@ export async function listPasses(ctx, filters, pagination) {
   if (isResident(ctx)) filter.unit = ctx.unitId;
   if (filters.status) filter.status = filters.status;
   if (filters.kind) filter.kind = filters.kind === 'one_time' ? { $ne: 'recurring' } : 'recurring';
-  const result = await paginate(GuestPass, filter, pagination, { populate: { path: 'unit', select: 'label' } });
+  const result = await paginate(GuestPass, filter, pagination, { populate: [{ path: 'unit', select: 'label' }, { path: 'gates', select: 'name code' }] });
   // Only the household gets the QR; guards see the list without it.
   if (isResident(ctx)) result.items = result.items.map(withQr);
   return result;
@@ -291,11 +317,13 @@ async function findPassForGate(ctx, code, qr) {
   return pass;
 }
 
-// Guard verifies a typed code or a scanned QR. opts: { qr, occurredAt, clientKey } (offline mode).
-export async function verifyPass(ctx, code, { qr, occurredAt, clientKey } = {}) {
+// Guard verifies a typed code or a scanned QR. opts: { qr, occurredAt, clientKey } (offline mode),
+// gateId (where the guard is) and guardApproved (resident confirmed by phone: overrides a gate refusal).
+export async function verifyPass(ctx, code, { qr, occurredAt, clientKey, gateId, guardApproved } = {}) {
   const existing = await byClientKey(ctx, clientKey);
   if (existing) return replay(existing);
   const now = resolveTime(occurredAt);
+  const gate = await gateSvc.resolveGate(ctx, gateId);
   const pass = await findPassForGate(ctx, code, qr);
   if (now < pass.validFrom) throw ApiError.badRequest('This pass is not valid yet');
   if (now > pass.validTo) {
@@ -319,6 +347,10 @@ export async function verifyPass(ctx, code, { qr, occurredAt, clientKey } = {}) 
   if (recurring && (await Visitor.exists({ society: ctx.societyId, pass: pass._id, status: 'checked_in' }))) {
     throw ApiError.conflict(`${pass.guestName} is already inside on this pass`);
   }
+  // Checked before the use count changes, so a refused scan does not use up the pass.
+  const listRule = await gateSvc.checkListed(ctx, gate, pass.gates, { subject: 'This pass is', override: guardApproved });
+  const kindRule = await gateSvc.checkKind(ctx, gate, gateKind(pass.purpose), { override: guardApproved });
+  const gateOverride = (listRule || kindRule)?.override;
 
   // Atomic use-count increment prevents double entry on concurrent scans. Recurring passes are not used up.
   const cond = { _id: pass._id, status: 'active' };
@@ -341,6 +373,9 @@ export async function verifyPass(ctx, code, { qr, occurredAt, clientKey } = {}) 
     clientKey,
     offline: Boolean(clientKey && occurredAt),
     frequentVisitor: used.frequentVisitor,
+    entryGate: gate._id,
+    entryGateName: gate.name,
+    ...(gateOverride ? { gateOverride } : {}),
     note: recurring ? 'Recurring pass' : 'Pre-approved pass',
     ...(hit.watch ? { flag: { type: 'watch', reason: hit.watch.reason, entry: hit.watch._id } } : {}),
   });

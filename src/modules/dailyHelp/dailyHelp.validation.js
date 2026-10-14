@@ -10,6 +10,7 @@ export const createHelp = z.object({
   phone: phone().optional(),
   type: z.enum(HELP_TYPES).default('maid'),
   units: z.array(objectId()).max(30).optional(), // admins only; residents use their own unit
+  allowedGates: z.array(objectId()).max(20).optional(), // management only; empty = any gate
 });
 
 export const updateHelp = z.object({
@@ -17,6 +18,7 @@ export const updateHelp = z.object({
   phone: phone().optional(),
   type: z.enum(HELP_TYPES).optional(),
   units: z.array(objectId()).max(30).optional(),
+  allowedGates: z.array(objectId()).max(20).optional(),
   active: z.boolean().optional(),
 });
 
@@ -24,9 +26,10 @@ export const listHelp = pageQuery.extend({
   type: z.enum(HELP_TYPES).optional(),
   inside: z.stringbool().optional(),
   search: z.string().trim().max(60).optional(),
+  gate: objectId().optional(), // gate of the last scan (with inside=true: inside, came in by this gate)
 });
 
-export const gateScan = z.object({ passcode: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit passcode') });
+export const gateScan = z.object({ passcode: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit passcode'), gateId: objectId().optional() });
 
 export const reviewBody = z.object({
   rating: z.coerce.number().int().min(1).max(5),

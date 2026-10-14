@@ -7,7 +7,8 @@ export const COMMAND_STATUS = ['pending', 'sent', 'done', 'failed', 'expired'];
 const barrierCommandSchema = new mongoose.Schema(
   {
     society: { type: mongoose.Schema.Types.ObjectId, ref: 'Society', required: true },
-    gate: { type: String, required: true, trim: true },
+    gate: { type: String, required: true, trim: true }, // gate name (old commands have only this)
+    gateId: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' },
     action: { type: String, enum: ['open', 'close'], default: 'open' },
     reason: { type: String, trim: true },
     visitor: { type: mongoose.Schema.Types.ObjectId, ref: 'Visitor' },

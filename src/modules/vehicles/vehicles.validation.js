@@ -26,7 +26,8 @@ export const setRfid = z.object({ rfidTag: rfidTag().nullable() });
 export const logMovement = z.object({
   plate: plate(),
   direction: z.enum(['in', 'out']),
-  gate: z.string().trim().max(40).optional(),
+  gateId: objectId().optional(),
+  gate: z.string().trim().max(40).optional(), // legacy: gate name
   note: z.string().trim().max(200).optional(),
 });
 export const lookup = z.object({ plate: plate(), direction: z.enum(['in', 'out']).default('in') });
@@ -34,7 +35,7 @@ export const listMovements = pageQuery.extend({
   match: z.enum(MOVEMENT_MATCH).optional(),
   direction: z.enum(['in', 'out']).optional(),
   source: z.enum(MOVEMENT_SOURCES).optional(),
-  gate: z.string().trim().max(40).optional(),
+  gate: z.string().trim().max(40).optional(), // gate id, or a gate name (old movements only have the name)
   plate: z.string().trim().max(15).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),

@@ -13,6 +13,7 @@ import { localDateString, localPeriod, startOfLocalDay } from '../../common/util
 import { audienceFilter } from '../../common/utils/audience.js';
 import * as billing from '../billing/billing.service.js';
 import * as complaints from '../complaints/complaints.service.js';
+import * as gates from '../gates/gates.service.js';
 
 const ACTIVE_COMPLAINT = ['open', 'assigned', 'in_progress', 'on_hold', 'reopened'];
 const currentPeriod = () => localPeriod();
@@ -34,7 +35,7 @@ async function management(ctx) {
       billing.summary(ctx, currentPeriod()),
       billing.summary(ctx),
       Booking.countDocuments({ society: s, date: localToday(), status: 'confirmed' }),
-      Visitor.find({ society: s }).sort({ createdAt: -1 }).limit(5).populate('unit', 'label').select('name purpose status createdAt unit').lean(),
+      Visitor.find({ society: s }).sort({ createdAt: -1 }).limit(5).populate('unit', 'label').select('name purpose status createdAt unit entryGateName exitGateName').lean(),
     ]);
   return {
     units,
@@ -53,13 +54,33 @@ async function management(ctx) {
 
 async function guard(ctx) {
   const s = ctx.societyId;
-  const [pending, insideNow, helpInside, activeSos] = await Promise.all([
+  // The guard's gate (chosen in the console) with its own counts; society-wide totals stay as before.
+  let gate = (await gates.currentPost(ctx))?.gate || null;
+  if (!gate) {
+    const open = await gates.listActive(s);
+    if (open.length === 1) gate = open[0]; // one gate: that is where the guard is
+  }
+  const [pending, insideNow, helpInside, activeSos, gateCounts] = await Promise.all([
     Visitor.countDocuments({ society: s, status: 'pending' }),
     Visitor.countDocuments({ society: s, status: 'checked_in' }),
     DailyHelp.countDocuments({ society: s, isInside: true }),
     SosAlert.countDocuments({ society: s, status: { $ne: 'resolved' } }),
+    gate
+      ? Promise.all([
+          Visitor.countDocuments({ society: s, status: 'pending', entryGate: gate._id }),
+          Visitor.countDocuments({ society: s, status: 'checked_in', entryGate: gate._id }),
+          Visitor.countDocuments({ society: s, entryGate: gate._id, createdAt: { $gte: startOfLocalDay() } }),
+        ])
+      : null,
   ]);
-  return { pendingVisitors: pending, insideNow, helpInside, activeSos };
+  return {
+    pendingVisitors: pending,
+    insideNow,
+    helpInside,
+    activeSos,
+    gate: gate && { _id: gate._id, name: gate.name, code: gate.code },
+    atGate: gateCounts && { pending: gateCounts[0], inside: gateCounts[1], today: gateCounts[2] },
+  };
 }
 
 async function resident(ctx) {

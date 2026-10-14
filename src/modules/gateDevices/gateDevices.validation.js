@@ -10,7 +10,8 @@ export const event = z
     plate: z.string().trim().min(3).max(15).optional(),
     tag: z.string().trim().min(4).max(40).optional(),
     direction: z.enum(['in', 'out']),
-    gate: z.string().trim().min(1).max(40).default('Main gate'),
+    // Only for devices not linked to a gate (legacy): a gate name or id. Linked devices use their gate.
+    gate: z.string().trim().min(1).max(40).optional(),
     imageUrl: z.url().max(500).optional(),
     confidence: z.coerce.number().min(0).max(1).optional(),
     occurredAt: z.coerce.date().optional(),
@@ -19,7 +20,9 @@ export const event = z
   .refine((v) => (v.type === 'anpr' ? v.plate : v.tag), { message: 'plate is required for anpr, tag for rfid', path: ['plate'] });
 
 export const requestOpen = z.object({
-  gate: z.string().trim().min(1).max(40).default('Main gate'),
+  gateId: objectId().optional(),
+  gate: z.string().trim().min(1).max(40).optional(), // legacy: gate name. Neither = the guard's current gate
+
   reason: z.string().trim().max(200).optional(),
   visitorId: objectId().optional(),
   movementId: objectId().optional(),

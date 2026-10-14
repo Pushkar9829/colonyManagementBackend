@@ -15,6 +15,8 @@ const parcelSchema = new mongoose.Schema(
     packages: { type: Number, default: 1, min: 1 },
     photoUrl: { type: String },
     storageLocation: { type: String, trim: true }, // shelf / rack at the gate
+    gate: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' }, // gate where it was received
+    gateName: { type: String, trim: true },
     note: { type: String, trim: true },
     status: { type: String, enum: PARCEL_STATUS, default: 'received' },
     // Shown only to the household; the guard types it at hand-over.

@@ -13,12 +13,16 @@ import { money } from '../../common/utils/money.js';
 import { ROLES } from '../../common/constants/index.js';
 import * as uploads from '../uploads/uploads.service.js';
 import * as audit from '../audit/audit.service.js';
+import * as gateSvc from '../gates/gates.service.js';
 import { notifyUnit } from '../notifications/notifications.service.js';
 import { invalidate } from '../../realtime/socket.js';
 
 const isResident = (ctx) => ctx.role === ROLES.RESIDENT;
 const isGuard = (ctx) => ctx.role === ROLES.GUARD;
-const POPULATE = { path: 'units', select: 'label' };
+const POPULATE = [
+  { path: 'units', select: 'label' },
+  { path: 'allowedGates', select: 'name code' },
+];
 
 async function uniquePasscode(societyId) {
   for (let i = 0; i < 10; i += 1) {
@@ -39,6 +43,7 @@ export async function list(ctx, filters, pagination) {
   if (isResident(ctx)) filter.units = ctx.unitId;
   if (filters.type) filter.type = filters.type;
   if (filters.inside !== undefined) filter.isInside = filters.inside;
+  if (filters.gate) filter.lastGate = filters.gate;
   if (filters.search) {
     const rx = { $regex: escapeRegex(filters.search), $options: 'i' };
     filter.$or = [{ name: rx }, { phone: rx }];
@@ -72,7 +77,7 @@ async function decorate(ctx, items) {
 }
 
 // A resident adding a helper who already works in the society (same phone) gets linked, not duplicated.
-export async function create(ctx, data) {
+export async function create(ctx, { allowedGates, ...data }) {
   if (isResident(ctx)) {
     if (data.phone) {
       const existing = await DailyHelp.findOneAndUpdate(
@@ -83,8 +88,10 @@ export async function create(ctx, data) {
       if (existing) return existing.toObject();
     }
     data.units = [ctx.unitId];
-  } else if (data.units?.length) {
-    await assertUnits(ctx.societyId, data.units);
+  } else {
+    if (data.units?.length) await assertUnits(ctx.societyId, data.units);
+    // Which gates a helper may use is management's call, not the household's.
+    if (allowedGates) data.allowedGates = await gateSvc.assertGateIds(ctx.societyId, allowedGates);
   }
   const help = await DailyHelp.create({ ...data, society: ctx.societyId, createdBy: ctx.userId, passcode: await uniquePasscode(ctx.societyId) });
   return DailyHelp.findById(help._id).populate(POPULATE).lean();
@@ -94,6 +101,7 @@ export async function update(ctx, id, data) {
   const help = await DailyHelp.findOne({ _id: id, society: ctx.societyId });
   if (!help) throw ApiError.notFound('Helper not found');
   if (data.units) await assertUnits(ctx.societyId, data.units);
+  if (data.allowedGates) data.allowedGates = await gateSvc.assertGateIds(ctx.societyId, data.allowedGates);
   Object.assign(help, data);
   await help.save();
   return DailyHelp.findById(help._id).populate(POPULATE).lean();
@@ -114,22 +122,29 @@ export async function attendance(ctx, id, pagination) {
 
 // Guard enters the helper's passcode: toggles between entry and exit.
 // occurredAt: when the guard actually scanned (offline gate console replays), never in the future.
-export async function gateScan(ctx, passcode, { occurredAt } = {}) {
+// gateId: where the guard is. Entry is refused at a gate that takes no staff or that is not one of the
+// helper's allowed gates; leaving is allowed by any gate and recorded.
+export async function gateScan(ctx, passcode, { occurredAt, gateId } = {}) {
   const help = await DailyHelp.findOne({ society: ctx.societyId, passcode });
   if (!help) throw ApiError.notFound('No helper with this passcode');
   if (!help.active) throw ApiError.forbidden('This helper has been deactivated');
   const now = occurredAt && new Date(occurredAt) < new Date() ? new Date(occurredAt) : new Date();
+  const gate = await gateSvc.resolveGate(ctx, gateId);
 
   let direction;
   if (help.isInside) {
-    await HelpAttendance.findOneAndUpdate({ society: ctx.societyId, help: help._id, outAt: null }, { outAt: now }, { sort: { inAt: -1 } });
+    await HelpAttendance.findOneAndUpdate({ society: ctx.societyId, help: help._id, outAt: null }, { outAt: now, outGate: gate._id, outGateName: gate.name }, { sort: { inAt: -1 } });
     direction = 'out';
   } else {
-    await HelpAttendance.create({ society: ctx.societyId, help: help._id, inAt: now, markedBy: ctx.userId });
+    await gateSvc.checkListed(ctx, gate, help.allowedGates, { subject: `${help.name} is` });
+    await gateSvc.checkKind(ctx, gate, 'staff');
+    await HelpAttendance.create({ society: ctx.societyId, help: help._id, inAt: now, markedBy: ctx.userId, inGate: gate._id, inGateName: gate.name });
     direction = 'in';
   }
   help.isInside = direction === 'in';
   help.lastSeenAt = now;
+  help.lastGate = gate._id;
+  help.lastGateName = gate.name;
   await help.save();
 
   await Promise.all(

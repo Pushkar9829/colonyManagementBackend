@@ -5,6 +5,7 @@ import { escapeRegex } from '../../common/utils/strings.js';
 import { ROLES } from '../../common/constants/index.js';
 import * as uploads from '../uploads/uploads.service.js';
 import * as audit from '../audit/audit.service.js';
+import * as gateSvc from '../gates/gates.service.js';
 import { notifyRoles, notifyUnit, notifyUsers } from '../notifications/notifications.service.js';
 import { invalidate } from '../../realtime/socket.js';
 
@@ -98,13 +99,16 @@ const ALERT_POPULATE = [
 ];
 
 // Guard's one-tap "child exiting": urgent push + SMS to the household (SMS ignores opt-outs for safety).
-export async function raiseChildExit(ctx, childId, { gate, note }) {
+// Any gate may raise one (a child's safety is not limited by gate rules).
+export async function raiseChildExit(ctx, childId, { gateId, gate: gateName, note }) {
+  const g = await gateSvc.resolveGate(ctx, gateId || gateName, { freeText: true });
+  const gate = g.name;
   const child = await Child.findOne({ _id: childId, society: ctx.societyId }).populate('unit', 'label').lean();
   if (!child) throw ApiError.notFound('Child not found');
   if (!child.alertOnExit) throw ApiError.badRequest(`${child.name}'s parents have not asked for exit alerts`);
   const recent = await ChildAlert.findOne({ society: ctx.societyId, child: child._id, status: 'open', createdAt: { $gte: new Date(Date.now() - 2 * 60000) } }).lean();
   if (recent) throw ApiError.conflict('An alert for this child was raised a moment ago and is waiting for the parent');
-  const alert = await ChildAlert.create({ society: ctx.societyId, child: child._id, unit: child.unit._id, gate, note, raisedBy: ctx.userId });
+  const alert = await ChildAlert.create({ society: ctx.societyId, child: child._id, unit: child.unit._id, gate, gateId: g._id, note, raisedBy: ctx.userId });
   await notifyUnit(ctx.societyId, child.unit._id, {
     type: 'child_alert',
     title: `${child.name} is leaving through ${gate || 'the gate'}`,

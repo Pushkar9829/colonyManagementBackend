@@ -36,6 +36,7 @@ export const createChild = z.object(childFields);
 export const updateChild = z.object({ ...childFields, age: z.coerce.number().int().min(0).max(18).nullable(), alertOnExit: z.boolean(), removePhoto: z.boolean() }).partial();
 export const listChildren = pageQuery.extend({ unit: objectId().optional(), search: z.string().trim().max(60).optional() });
 
-export const exitAlert = z.object({ gate: z.string().trim().max(40).default('Main gate'), note: z.string().trim().max(200).optional() });
+// gateId: the guard's gate; `gate` (a name) is the older form. Neither = the guard's current gate.
+export const exitAlert = z.object({ gateId: objectId().optional(), gate: z.string().trim().max(40).optional(), note: z.string().trim().max(200).optional() });
 export const listAlerts = pageQuery.extend({ status: z.enum(['open', 'acknowledged']).optional() });
 export const acknowledge = z.object({ response: z.enum(['ok', 'stop']).default('ok'), note: z.string().trim().max(200).optional() });

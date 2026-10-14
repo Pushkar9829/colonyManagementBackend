@@ -8,6 +8,7 @@ import { ROLES } from '../../common/constants/index.js';
 import * as uploads from '../uploads/uploads.service.js';
 import * as audit from '../audit/audit.service.js';
 import * as vehicles from '../vehicles/vehicles.service.js';
+import * as gateSvc from '../gates/gates.service.js';
 import { nextNumber } from '../counter/counter.service.js';
 import { notifyRoles, notifyUsers } from '../notifications/notifications.service.js';
 import { invalidate } from '../../realtime/socket.js';
@@ -26,8 +27,9 @@ const HANDOVER_POPULATE = [
   { path: 'acknowledgedBy', select: 'name' },
 ];
 
-export async function createHandover(ctx, data) {
-  const doc = await Handover.create({ ...data, society: ctx.societyId, fromGuard: ctx.userId });
+export async function createHandover(ctx, { gateId, gate, ...data }) {
+  const g = await gateSvc.resolveGate(ctx, gateId || gate, { freeText: true });
+  const doc = await Handover.create({ ...data, gate: g.name, gateId: g._id, society: ctx.societyId, fromGuard: ctx.userId });
   const pending = (data.pendingItems || []).filter((p) => !p.done).length;
   await logOccurrence(ctx, {
     category: 'handover',
@@ -62,6 +64,8 @@ export async function acknowledgeHandover(ctx, id, { note, pendingItems }) {
   if (pendingItems) h.pendingItems = pendingItems;
   if (!h.toGuard) h.toGuard = ctx.userId;
   await h.save();
+  // Taking over a shift puts the incoming guard on that gate (the console defaults to it).
+  if (h.gateId && ctx.role === ROLES.GUARD) await gateSvc.setPost(ctx, h.gateId, 'handover').catch(() => {});
   await logOccurrence(ctx, { category: 'handover', text: `Handover acknowledged${note ? `: ${note}` : ''}`, refModel: 'Handover', ref: h._id });
   await notifyUsers(ctx.societyId, [h.fromGuard], { type: 'duty', title: 'Your handover was acknowledged', body: note || '', link: '/duty' });
   refresh(ctx.societyId);

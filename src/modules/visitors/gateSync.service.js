@@ -5,8 +5,9 @@ import logger from '../../common/utils/logger.js';
 import * as visitors from './visitors.service.js';
 import * as dailyHelp from '../dailyHelp/dailyHelp.service.js';
 import * as schema from './visitors.validation.js';
+import { isObjectId } from '../../common/utils/schemas.js';
 
-const brief = (v) => v && { _id: v._id, name: v.name, status: v.status, unit: v.unit, checkInAt: v.checkInAt, checkOutAt: v.checkOutAt, occurredAt: v.occurredAt };
+const brief = (v) => v && { _id: v._id, name: v.name, status: v.status, unit: v.unit, checkInAt: v.checkInAt, checkOutAt: v.checkOutAt, occurredAt: v.occurredAt, entryGateName: v.entryGateName, exitGateName: v.exitGateName };
 
 function parse(zodSchema, data) {
   const r = zodSchema.safeParse(data);
@@ -14,11 +15,16 @@ function parse(zodSchema, data) {
   return r.data;
 }
 
+// The gate the guard was at when it happened (queued with the op), not wherever they are at sync time.
+const gateOf = (op, data) => data.gateId || op.gateId;
+// For the claim row: op.data is not validated yet, so only a well-formed id is kept.
+const validGate = (op) => [op.gateId, op.data?.gateId].find((g) => typeof g === 'string' && isObjectId(g));
+
 async function apply(ctx, op) {
   switch (op.kind) {
     case 'entry': {
       const data = parse(schema.syncEntry, op.data);
-      const v = await visitors.logEntry(ctx, { ...data, clientKey: op.key, occurredAt: op.occurredAt });
+      const v = await visitors.logEntry(ctx, { ...data, gateId: gateOf(op, data), clientKey: op.key, occurredAt: op.occurredAt });
       return { ref: v._id, result: { visitor: brief(v), leaveAtGate: v.leaveAtGate || false, watch: v.watch } };
     }
     case 'checkout': {
@@ -30,18 +36,18 @@ async function apply(ctx, op) {
         if (!entry) throw ApiError.conflict('The matching entry was not synced (it may have been refused)');
         id = entry._id;
       }
-      const v = await visitors.checkOut(ctx, id, { occurredAt: op.occurredAt });
+      const v = await visitors.checkOut(ctx, id, { occurredAt: op.occurredAt, gateId: gateOf(op, data) });
       return { ref: v._id, result: { visitor: brief(v) } };
     }
     case 'pass': {
       const data = parse(schema.syncPass, op.data);
-      const v = await visitors.verifyPass(ctx, data.code, { qr: data.qr, occurredAt: op.occurredAt, clientKey: op.key });
+      const v = await visitors.verifyPass(ctx, data.code, { qr: data.qr, occurredAt: op.occurredAt, clientKey: op.key, gateId: gateOf(op, data), guardApproved: data.guardApproved });
       return { ref: v._id, result: { visitor: brief(v), watch: v.watch } };
     }
     case 'help_scan': {
       const data = parse(schema.syncHelp, op.data);
       // Attendance keeps the time the guard scanned offline, not the sync time.
-      const r = await dailyHelp.gateScan(ctx, data.passcode, { occurredAt: op.occurredAt || data.occurredAt });
+      const r = await dailyHelp.gateScan(ctx, data.passcode, { occurredAt: op.occurredAt || data.occurredAt, gateId: gateOf(op, data) });
       return { ref: r.help._id, result: { direction: r.direction, help: { _id: r.help._id, name: r.help.name } } };
     }
     default:
@@ -59,7 +65,7 @@ export async function sync(ctx, ops) {
     let claim;
     try {
       // eslint-disable-next-line no-await-in-loop
-      claim = await GateSyncOp.create({ society: ctx.societyId, key: op.key, kind: op.kind, occurredAt: op.occurredAt, syncedBy: ctx.userId });
+      claim = await GateSyncOp.create({ society: ctx.societyId, key: op.key, kind: op.kind, occurredAt: op.occurredAt, gate: validGate(op), syncedBy: ctx.userId });
     } catch (err) {
       if (err.code !== 11000) throw err;
       // eslint-disable-next-line no-await-in-loop

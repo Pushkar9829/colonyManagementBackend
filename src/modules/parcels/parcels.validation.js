@@ -14,6 +14,7 @@ export const createParcel = z.object({
   storageLocation: z.string().trim().max(40).optional(),
   note: z.string().trim().max(200).optional(),
   visitorId: objectId().optional(), // the delivery visitor entry, when logged together
+  gateId: objectId().optional(), // gate receiving it; omitted = the guard's current gate
 });
 
 export const listParcels = pageQuery.extend({
@@ -22,6 +23,7 @@ export const listParcels = pageQuery.extend({
   unit: objectId().optional(),
   search: z.string().trim().max(60).optional(),
   olderThanHours: z.coerce.number().int().min(1).max(24 * 60).optional(),
+  gate: objectId().optional(),
 });
 
 export const collect = z

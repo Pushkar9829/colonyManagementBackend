@@ -7,6 +7,10 @@ const helpAttendanceSchema = new mongoose.Schema(
     inAt: { type: Date, required: true },
     outAt: Date,
     markedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    inGate: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' },
+    inGateName: { type: String, trim: true },
+    outGate: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' },
+    outGateName: { type: String, trim: true },
   },
   { timestamps: true },
 );

@@ -20,6 +20,18 @@ const visitorSchema = new mongoose.Schema(
     note: { type: String, trim: true },
     checkInAt: Date,
     checkOutAt: Date,
+    // Gate of arrival / departure, with the name as it was then (entries from before gates have neither).
+    entryGate: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' },
+    entryGateName: { type: String, trim: true },
+    exitGate: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' },
+    exitGateName: { type: String, trim: true },
+    // The gate does not take this kind of entry (or the pass is for another gate) but the guard let them
+    // in after the resident confirmed by phone.
+    gateOverride: {
+      at: Date,
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      reason: String,
+    },
     // When the guard actually saw the visitor (differs from createdAt for entries synced from offline mode).
     occurredAt: Date,
     // Idempotency key from the gate device; retries with the same key return the same entry.
@@ -44,5 +56,6 @@ visitorSchema.index({ society: 1, status: 1, createdAt: -1 });
 visitorSchema.index({ society: 1, unit: 1, createdAt: -1 });
 visitorSchema.index({ society: 1, clientKey: 1 }, { unique: true, partialFilterExpression: { clientKey: { $type: 'string' } } });
 visitorSchema.index({ society: 1, 'flag.type': 1, createdAt: -1 });
+visitorSchema.index({ society: 1, entryGate: 1, status: 1, createdAt: -1 });
 
 export default mongoose.model('Visitor', visitorSchema);

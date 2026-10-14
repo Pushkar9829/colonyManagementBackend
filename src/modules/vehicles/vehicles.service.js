@@ -9,6 +9,7 @@ import * as units from '../units/units.service.js';
 import * as audit from '../audit/audit.service.js';
 import * as watchlist from '../visitors/watchlist.service.js';
 import { getSettings } from '../visitors/securitySettings.service.js';
+import * as gateSvc from '../gates/gates.service.js';
 import { normalizePlate } from '../visitors/gateTime.js';
 import { notifyRoles } from '../notifications/notifications.service.js';
 import { invalidate } from '../../realtime/socket.js';
@@ -164,14 +165,17 @@ async function alertMovement(societyId, movement, evaluation) {
 }
 
 // Writes a movement row and raises any alert. `ctx.device` is set for hardware events.
+// gate: a resolved gate ({ _id, name }), or a plain name from older callers.
 export async function recordMovement(ctx, { source, direction, gate, imageUrl, confidence, occurredAt, eventId, visitorId, evaluation }) {
   const now = new Date();
+  const g = typeof gate === 'string' ? { name: gate } : gate || (await gateSvc.ensureDefaultGate(ctx.societyId));
   const movement = await VehicleMovement.create({
     society: ctx.societyId,
     plate: evaluation.plate || undefined,
     tag: evaluation.tag || undefined,
     direction,
-    gate: gate || 'Main gate',
+    gate: g?.name || 'Main gate',
+    gateId: g?._id,
     source,
     match: evaluation.match,
     decision: evaluation.decision,
@@ -193,9 +197,12 @@ export async function recordMovement(ctx, { source, direction, gate, imageUrl, c
 }
 
 // Guard types a plate at the gate (no camera). Returns the decision so the console can show it.
-export async function logManual(ctx, { plate, direction, gate, note }) {
+// A gate that takes no vehicles (pedestrian / service-only) refuses the log.
+export async function logManual(ctx, { plate, direction, gate, gateId, note }) {
+  const g = await gateSvc.resolveGate(ctx, gateId || gate, { freeText: true });
+  await gateSvc.checkKind(ctx, g, 'vehicles');
   const evaluation = await evaluate(ctx.societyId, { plate, direction });
-  const movement = await recordMovement(ctx, { source: 'manual', direction, gate, evaluation });
+  const movement = await recordMovement(ctx, { source: 'manual', direction, gate: g, evaluation });
   if (note) await VehicleMovement.updateOne({ _id: movement._id }, { reason: `${evaluation.reason} · ${note}` });
   return { ...(await VehicleMovement.findById(movement._id).populate(MOVEMENT_POPULATE).lean()), vehicleInfo: evaluation.vehicle };
 }
@@ -211,16 +218,18 @@ export async function logVisitorVehicle(ctx, visitor) {
     decision: visitor.status === 'denied' ? 'deny' : 'allow',
     reason: `Visitor ${visitor.name}`,
   };
-  await recordMovement(ctx, { source: 'visitor', direction: 'in', occurredAt: visitor.occurredAt || visitor.createdAt, visitorId: visitor._id, evaluation }).catch(() => {});
+  const gate = visitor.entryGateName ? { _id: visitor.entryGate, name: visitor.entryGateName } : undefined;
+  await recordMovement(ctx, { source: 'visitor', direction: 'in', gate, occurredAt: visitor.occurredAt || visitor.createdAt, visitorId: visitor._id, evaluation }).catch(() => {});
 }
 
-export function listMovements(ctx, filters, pagination) {
+export async function listMovements(ctx, filters, pagination) {
   const filter = { society: ctx.societyId };
   if (isResident(ctx)) filter.unit = ctx.unitId;
   if (filters.match) filter.match = filters.match;
   if (filters.direction) filter.direction = filters.direction;
   if (filters.source) filter.source = filters.source;
-  if (filters.gate) filter.gate = filters.gate;
+  // By gate id or name; movements from before gates were set up match on the name.
+  if (filters.gate) Object.assign(filter, gateSvc.legacyGateFilter(await gateSvc.resolveGate(ctx, filters.gate, { freeText: true, includeInactive: true })));
   if (filters.plate) filter.plate = { $regex: escapeRegex(normalizePlate(filters.plate)) };
   if (filters.from || filters.to) {
     filter.occurredAt = {};

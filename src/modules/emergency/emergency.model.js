@@ -45,7 +45,8 @@ const childAlertSchema = new mongoose.Schema(
     society: { type: ObjectId, ref: 'Society', required: true },
     child: { type: ObjectId, ref: 'ResidentChild', required: true },
     unit: { type: ObjectId, ref: 'Unit', required: true },
-    gate: { type: String, trim: true, default: 'Main gate' },
+    gate: { type: String, trim: true, default: 'Main gate' }, // gate name (old alerts have only this)
+    gateId: { type: ObjectId, ref: 'Gate' },
     note: { type: String, trim: true },
     raisedBy: { type: ObjectId, ref: 'User', required: true },
     status: { type: String, enum: ['open', 'acknowledged'], default: 'open' },

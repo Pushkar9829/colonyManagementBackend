@@ -19,12 +19,15 @@ export const logEntry = z.object({
   // Offline mode: when the guard saw the visitor, and a device-generated key so retries don't duplicate.
   occurredAt: z.coerce.date().optional(),
   clientKey: clientKey().optional(),
-  // Guard already confirmed with the household by phone (used by offline entries).
+  // Guard already confirmed with the household by phone (used by offline entries, and to override a
+  // gate that does not take this kind of visitor).
   guardApproved: z.boolean().optional(),
+  // Gate the guard is at; omitted = the guard's current gate, else the society's first gate.
+  gateId: objectId().optional(),
 });
 
 export const respond = z.object({ note: z.string().trim().max(200).optional() });
-export const checkOut = z.object({ occurredAt: z.coerce.date().optional() }).optional();
+export const checkOut = z.object({ occurredAt: z.coerce.date().optional(), gateId: objectId().optional() }).optional();
 
 export const listVisitors = pageQuery.extend({
   status: z.enum(VISITOR_STATUS).optional(),
@@ -34,6 +37,7 @@ export const listVisitors = pageQuery.extend({
   search: z.string().trim().max(60).optional(),
   flagged: z.stringbool().optional(),
   purpose: z.enum(VISITOR_PURPOSE).optional(),
+  gate: objectId().optional(), // entry gate
 });
 
 const recurrence = z
@@ -53,6 +57,7 @@ export const createPass = z
     validTo: z.coerce.date(),
     maxUses: z.coerce.number().int().min(1).max(100).default(1),
     recurrence: recurrence.optional(),
+    gates: z.array(objectId()).max(20).default([]), // empty = any gate
   })
   .refine((v) => v.validTo > v.validFrom, { message: 'validTo must be after validFrom', path: ['validTo'] })
   .refine((v) => v.validTo - v.validFrom <= (v.recurrence ? 366 : 31) * 86400 * 1000, {
@@ -67,6 +72,9 @@ export const verifyPass = z
     qr: z.string().trim().min(6).max(200).optional(),
     occurredAt: z.coerce.date().optional(),
     clientKey: clientKey().optional(),
+    gateId: objectId().optional(),
+    // Pass is for another gate (or the gate takes no visitors) but the resident confirmed by phone.
+    guardApproved: z.boolean().optional(),
   })
   .refine((v) => v.code || v.qr, { message: 'Enter the 6-digit code', path: ['code'] });
 
@@ -126,19 +134,22 @@ const syncOp = z.object({
   kind: z.enum(['entry', 'checkout', 'pass', 'help_scan']),
   occurredAt: z.coerce.date(),
   data: z.record(z.string(), z.unknown()).default({}),
+  gateId: objectId().optional(), // gate the guard was at (also accepted inside data)
 });
 export const sync = z.object({ ops: z.array(syncOp).min(1).max(100) });
 
 // payload schemas per op kind (validated inside the service, so one bad op doesn't reject the batch)
 export const syncEntry = logEntry.omit({ occurredAt: true, clientKey: true });
 export const syncCheckout = z
-  .object({ visitorId: objectId().optional(), entryKey: clientKey().optional() })
+  .object({ visitorId: objectId().optional(), entryKey: clientKey().optional(), gateId: objectId().optional() })
   .refine((v) => v.visitorId || v.entryKey, { message: 'visitorId or entryKey is required' });
-export const syncPass = z.object({ code: z.string().regex(/^\d{6}$/).optional(), qr: z.string().max(200).optional() }).refine((v) => v.code || v.qr, { message: 'code or qr is required' });
-export const syncHelp = z.object({ passcode: z.string().trim().min(4).max(10) });
+export const syncPass = z
+  .object({ code: z.string().regex(/^\d{6}$/).optional(), qr: z.string().max(200).optional(), gateId: objectId().optional(), guardApproved: z.boolean().optional() })
+  .refine((v) => v.code || v.qr, { message: 'code or qr is required' });
+export const syncHelp = z.object({ passcode: z.string().trim().min(4).max(10), gateId: objectId().optional() });
 
 // ---------- analytics & settings ----------
-export const analytics = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() });
+export const analytics = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional(), gate: objectId().optional() });
 
 export const settings = z
   .object({

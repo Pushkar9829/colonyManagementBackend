@@ -5,7 +5,8 @@ import { getPagination } from '../../common/utils/pagination.js';
 import * as service from './gateDevices.service.js';
 
 // Hardware calls carry the device id so movements and acks record which device acted.
-const deviceCtx = (req) => ({ ...ctx(req), deviceId: req.device._id });
+// The device's gate decides which gate its events and commands belong to.
+const deviceCtx = (req) => ({ ...ctx(req), deviceId: req.device._id, deviceGate: req.device.gate || null });
 
 export const event = asyncHandler(async (req, res) => {
   const r = await service.handleEvent(deviceCtx(req), req.body);

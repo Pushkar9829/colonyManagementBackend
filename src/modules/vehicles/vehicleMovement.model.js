@@ -10,7 +10,10 @@ const vehicleMovementSchema = new mongoose.Schema(
     plate: { type: String, trim: true, uppercase: true },
     tag: { type: String, trim: true, uppercase: true },
     direction: { type: String, enum: ['in', 'out'], required: true },
+    // `gate` is the gate's name (all a movement had before gates were set up); `gateId` links the Gate.
+    // Old documents only have the name, so reads and filters fall back to it.
     gate: { type: String, trim: true, default: 'Main gate' },
+    gateId: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' },
     source: { type: String, enum: MOVEMENT_SOURCES, required: true },
     match: { type: String, enum: MOVEMENT_MATCH, required: true },
     decision: { type: String, enum: ['allow', 'deny'], required: true },

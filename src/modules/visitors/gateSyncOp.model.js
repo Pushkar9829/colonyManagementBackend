@@ -12,6 +12,7 @@ const gateSyncOpSchema = new mongoose.Schema(
     ref: { type: mongoose.Schema.Types.ObjectId },
     result: mongoose.Schema.Types.Mixed,
     occurredAt: Date,
+    gate: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' }, // the gate the guard was at when it happened
     syncedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },

@@ -24,6 +24,10 @@ const dailyHelpSchema = new mongoose.Schema(
     passcode: { type: String, required: true },
     isInside: { type: Boolean, default: false },
     lastSeenAt: Date,
+    // Gates the helper may enter by (set by management); empty = any gate that takes staff.
+    allowedGates: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Gate' }],
+    lastGate: { type: mongoose.Schema.Types.ObjectId, ref: 'Gate' }, // gate of the last scan, for "inside now" by gate
+    lastGateName: { type: String, trim: true },
     active: { type: Boolean, default: true },
     photo: attachmentSchema,
     documents: { type: [documentSchema], default: [] },

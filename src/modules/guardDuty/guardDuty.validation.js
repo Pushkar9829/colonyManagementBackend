@@ -8,7 +8,8 @@ const pendingItems = z.array(z.object({ text: z.string().trim().min(1).max(200),
 
 export const createHandover = z.object({
   shift: z.enum(SHIFTS),
-  gate: z.string().trim().max(40).optional(),
+  gateId: objectId().optional(), // omitted = the guard's current gate
+  gate: z.string().trim().max(40).optional(), // legacy: gate name
   toGuard: objectId().optional(),
   notes: z.string().trim().max(2000).optional(),
   incidents: z.string().trim().max(2000).optional(),
