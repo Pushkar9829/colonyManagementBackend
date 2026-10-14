@@ -3,6 +3,7 @@ import env from '../../config/env.js';
 import ApiError from '../errors/ApiError.js';
 import { loadPrincipal } from '../../modules/users/principal.js';
 import { ROLES } from '../constants/index.js';
+import { isPermission } from '../../modules/platformTeam/permissions.js';
 
 // Verifies the bearer access token and loads the user + active membership onto req.user.
 export async function authenticate(req, _res, next) {
@@ -39,5 +40,24 @@ export const authorize = (...roles) => (req, _res, next) => {
 // Society-scoped routes that every member may use (no role restriction).
 export const requireSociety = (req, _res, next) => (req.user?.society ? next() : next(ApiError.forbidden('Open a society to use this')));
 
-export const requirePlatformAdmin = (req, _res, next) =>
-  req.user?.platformRole === 'super_admin' ? next() : next(ApiError.forbidden('Platform admins only'));
+// Platform console routes. The principal carries platformPermissions (owners hold all of them; see
+// modules/platformTeam). requirePlatform() with no keys means "any active platform team member";
+// with keys, every one of them is required.
+const checkPermissions = (perms) => {
+  const unknown = perms.filter((p) => !isPermission(p));
+  if (unknown.length) throw new Error(`Unknown platform permission: ${unknown.join(', ')}`);
+};
+const platformGuard = (perms, test) => {
+  checkPermissions(perms);
+  return (req, _res, next) => {
+    const held = req.user?.platformPermissions;
+    if (!held) return next(ApiError.forbidden('Platform team only'));
+    if (!perms.length || test(perms, held)) return next();
+    return next(new ApiError(403, 'PERMISSION_DENIED', 'Your platform role does not allow this'));
+  };
+};
+export const requirePlatform = (...perms) => platformGuard(perms, (p, held) => p.every((k) => held.includes(k)));
+export const requirePlatformAny = (...perms) => platformGuard(perms, (p, held) => p.some((k) => held.includes(k)));
+
+// Kept for older imports: any member of the platform team.
+export const requirePlatformAdmin = requirePlatform();

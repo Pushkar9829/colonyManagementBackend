@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { authenticate, requirePlatformAdmin } from '../../common/middleware/auth.js';
+import { authenticate, requirePlatform } from '../../common/middleware/auth.js';
+import { audited } from '../platformTeam/platformAudit.js';
 import { validate } from '../../common/middleware/validate.js';
 import { authLimiter } from '../../common/middleware/rateLimit.js';
 import * as controller from './auth.controller.js';
@@ -24,7 +25,8 @@ router.get('/me', authenticate, controller.me);
 router.post('/sessions', authenticate, validate({ body: schema.currentSession }), controller.listSessions);
 router.post('/sessions/revoke-others', authenticate, validate({ body: schema.currentSession }), controller.revokeOtherSessions);
 router.delete('/sessions/:family', authenticate, validate({ params: schema.sessionParams }), controller.revokeSession);
-router.post('/support-session', authenticate, requirePlatformAdmin, validate({ body: schema.supportSession }), controller.startSupportSession);
+const supportSessionAudit = audited('support.session_started', { targetType: 'Society', targetId: (req) => req.body.societyId, society: (req) => req.body.societyId });
+router.post('/support-session', authenticate, requirePlatform('support.access'), validate({ body: schema.supportSession }), supportSessionAudit, controller.startSupportSession);
 router.post('/switch', authenticate, validate({ body: schema.switchMembership }), controller.switchMembership);
 router.post('/homes', authenticate, validate({ body: schema.addHome }), controller.addHome);
 router.patch('/me', authenticate, validate({ body: schema.updateMe }), controller.updateMe);

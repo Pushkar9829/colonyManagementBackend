@@ -4,6 +4,9 @@ import User from '../users/user.model.js';
 import Membership from '../users/membership.model.js';
 import { nextPlatformNumber } from '../subscriptions/platformCounter.model.js';
 import { appLink, emailPlatformTeam } from '../subscriptions/platformMail.js';
+import { membersWithPermission } from '../platformTeam/access.js';
+
+const SUPPORT_REPLY = 'support.reply';
 import * as uploads from '../uploads/uploads.service.js';
 import { notifyUsers } from '../notifications/notifications.service.js';
 import * as audit from '../audit/audit.service.js';
@@ -68,7 +71,7 @@ async function tellSociety(ticket, title, body) {
 
 async function tellPlatform(ticket, subject, text) {
   const society = await Society.findById(ticket.society).select('name code').lean();
-  await emailPlatformTeam({ subject: `[${ticket.number}] ${subject}`, text: `${society?.name} (${society?.code})\n\n${text}\n\nOpen the console: ${appLink(`/platform/support?ticket=${ticket._id}`)}` });
+  await emailPlatformTeam({ permission: SUPPORT_REPLY, subject: `[${ticket.number}] ${subject}`, text: `${society?.name} (${society?.code})\n\n${text}\n\nOpen the console: ${appLink(`/platform/support?ticket=${ticket._id}`)}` });
 }
 
 // ---------- society side ----------
@@ -207,14 +210,16 @@ export async function setStatus(platformUser, id, { status, note }) {
 export async function assign(platformUser, id, assignedTo) {
   const ticket = await load({ _id: id });
   const target = assignedTo || platformUser._id;
-  if (!(await User.exists({ _id: target, platformRole: 'super_admin', status: 'active' }))) throw ApiError.badRequest('Assignee must be a platform admin');
+  // Assignees are active platform members who may answer tickets (owners always can).
+  const team = await membersWithPermission(SUPPORT_REPLY, '_id');
+  if (!team.some((u) => String(u._id) === String(target))) throw ApiError.badRequest('Assignee must be a platform member who can reply to tickets');
   ticket.assignedTo = target;
   ticket.history.push({ by: platformUser._id, from: ticket.status, to: ticket.status, note: 'Assigned' });
   await ticket.save();
   return reload(ticket._id);
 }
 
-export const platformTeam = () => User.find({ platformRole: 'super_admin', status: 'active' }).select('name email').lean();
+export const platformTeam = () => membersWithPermission(SUPPORT_REPLY, 'name email');
 
 // ---------- scheduled ----------
 // Emails the platform team once when a ticket misses its first-response SLA.

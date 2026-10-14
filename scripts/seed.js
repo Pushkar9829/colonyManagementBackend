@@ -173,6 +173,9 @@ All demo accounts use the password: ${PASSWORD}
   plumber@demo.test      Staff (technician)
   resident@demo.test     Resident (owns A-101 and A-104)
   superadmin@demo.test   Platform owner console
+  billing@demo.test      Platform team: Billing
+  support@demo.test      Platform team: Support
+  viewer@demo.test       Platform team: Viewer (read-only)
   neha@demo.test         Resident (A-102, tenant)
 Daily help passcode for gate testing: 482913
 `);

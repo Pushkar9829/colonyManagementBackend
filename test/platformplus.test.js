@@ -375,7 +375,7 @@ describe('feature flags', () => {
     const reset = await api.put(`/api/v1/platform/societies/${s.one.id}/features`).set(s.p).send({ overrides: { parking: null } });
     assert.equal(reset.body.data.features.find((f) => f.key === 'parking').enabled, true, 'back to the plan default');
     const cat = await api.get('/api/v1/platform/features/catalogue').set(s.p);
-    assert.equal(cat.body.data.features.length, 16);
+    assert.equal(cat.body.data.features.length, 17);
   });
 
   test('requireFeature middleware gates a router', async () => {

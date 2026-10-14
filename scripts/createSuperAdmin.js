@@ -13,7 +13,9 @@ if (!email || !password || password.length < 8) {
 await connectDB();
 const existing = await User.findOne({ email: email.toLowerCase() });
 if (existing) {
-  existing.platformRole = 'super_admin';
+  existing.platformRole = 'super_admin'; // Owner of the platform team
+  existing.platformRoleId = undefined;
+  existing.platformStatus = 'active';
   await existing.save();
   console.log(`Promoted ${email} to super admin (password unchanged).`);
 } else {

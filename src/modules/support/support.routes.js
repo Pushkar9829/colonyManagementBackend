@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { authenticate, authorize, requireSociety } from '../../common/middleware/auth.js';
+import { authenticate, authorize, requirePlatform, requireSociety } from '../../common/middleware/auth.js';
+import { audited } from '../platformTeam/platformAudit.js';
 import { validate } from '../../common/middleware/validate.js';
 import { ROLES } from '../../common/constants/index.js';
 import * as controller from './support.controller.js';
@@ -20,12 +21,21 @@ router.post('/tickets/:id/reopen', authorize(...MANAGERS), validate({ params: sc
 
 export default router;
 
-// Mounted inside /api/v1/platform (already behind authenticate + requirePlatformAdmin).
+// Mounted inside /api/v1/platform (already behind authenticate + any platform member); each route needs its
+// own platform permission and changes go to the platform activity log.
 export const platformRouter = Router();
-platformRouter.get('/support/stats', controller.stats);
-platformRouter.get('/support/team', controller.team);
-platformRouter.get('/support/tickets', validate({ query: schema.listAll }), controller.listAll);
-platformRouter.get('/support/tickets/:id', validate({ params: schema.idParams }), controller.getAny);
-platformRouter.post('/support/tickets/:id/messages', validate({ params: schema.idParams, body: schema.platformReply }), controller.platformReply);
-platformRouter.post('/support/tickets/:id/status', validate({ params: schema.idParams, body: schema.setStatus }), controller.setStatus);
-platformRouter.post('/support/tickets/:id/assign', validate({ params: schema.idParams, body: schema.assign }), controller.assign);
+const ticketAudit = (action, details) =>
+  audited(action, { targetType: 'SupportTicket', society: (_req, data) => data?.society, details: (req, data) => ({ number: data?.number, ...details(req, data) }) });
+platformRouter.get('/support/stats', requirePlatform('support.view'), controller.stats);
+platformRouter.get('/support/team', requirePlatform('support.view'), controller.team);
+platformRouter.get('/support/tickets', requirePlatform('support.view'), validate({ query: schema.listAll }), controller.listAll);
+platformRouter.get('/support/tickets/:id', requirePlatform('support.view'), validate({ params: schema.idParams }), controller.getAny);
+platformRouter.post('/support/tickets/:id/messages', requirePlatform('support.reply'), validate({ params: schema.idParams, body: schema.platformReply }),
+  ticketAudit('support.replied', (req) => ({ status: req.body.status })), controller.platformReply);
+platformRouter.post('/support/tickets/:id/status', requirePlatform('support.reply'), validate({ params: schema.idParams, body: schema.setStatus }),
+  ticketAudit('support.status_changed', (req) => req.body), controller.setStatus);
+// Taking a ticket yourself only needs reply rights; handing it to someone else needs support.assign.
+const assignGuard = (req, res, next) =>
+  (!req.body?.assignedTo || String(req.body.assignedTo) === String(req.user._id) ? requirePlatform('support.reply') : requirePlatform('support.assign'))(req, res, next);
+platformRouter.post('/support/tickets/:id/assign', assignGuard, validate({ params: schema.idParams, body: schema.assign }),
+  ticketAudit('support.assigned', (_req, data) => ({ assignedTo: data?.assignedTo?.name })), controller.assign);

@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { authenticate, authorize, requireSociety } from '../../common/middleware/auth.js';
+import { authenticate, authorize, requirePlatform, requirePlatformAny, requireSociety } from '../../common/middleware/auth.js';
+import { audited } from '../platformTeam/platformAudit.js';
 import { validate } from '../../common/middleware/validate.js';
 import { ROLES } from '../../common/constants/index.js';
 import env from '../../config/env.js';
@@ -34,16 +35,22 @@ if (env.PAYMENT_PROVIDER === 'mock') {
 
 export default router;
 
-// Mounted inside /api/v1/platform (already behind authenticate + requirePlatformAdmin).
+// Mounted inside /api/v1/platform (already behind authenticate + any platform member); each route needs its
+// own platform permission and every change goes to the platform activity log.
 export const platformRouter = Router();
-platformRouter.get('/plans', controller.listPrices);
-platformRouter.put('/plans/:plan', validate({ params: schema.planParams, body: schema.updatePrice }), controller.updatePrice);
-platformRouter.get('/invoices', validate({ query: schema.listInvoices }), controller.listAll);
-platformRouter.get('/invoices/summary', controller.summary);
-platformRouter.get('/invoices/:id', validate({ params: schema.idParams }), controller.getAnyById);
-platformRouter.get('/invoices/:id/pdf', validate({ params: schema.idParams }), controller.pdfAny);
-platformRouter.post('/invoices/:id/mark-paid', validate({ params: schema.idParams, body: schema.markPaid }), controller.markPaid);
-platformRouter.post('/invoices/:id/void', validate({ params: schema.idParams, body: schema.voidInvoice }), controller.voidInvoice);
-platformRouter.post('/billing/run', controller.runBilling);
-platformRouter.get('/subscriptions/:societyId', validate({ params: schema.societyParams }), controller.getForSociety);
-platformRouter.patch('/subscriptions/:societyId', validate({ params: schema.societyParams, body: schema.updateForSociety }), controller.updateForSociety);
+const invoiceSociety = (_req, data) => data?.invoice?.society || data?.society;
+platformRouter.get('/plans', requirePlatform('plans.view'), controller.listPrices);
+platformRouter.put('/plans/:plan', requirePlatform('plans.manage'), validate({ params: schema.planParams, body: schema.updatePrice }),
+  audited('plan.price_updated', { targetType: 'Plan', details: (req) => ({ plan: req.params.plan, ...req.body }) }), controller.updatePrice);
+platformRouter.get('/invoices', requirePlatform('invoices.view'), validate({ query: schema.listInvoices }), controller.listAll);
+platformRouter.get('/invoices/summary', requirePlatform('invoices.view'), controller.summary);
+platformRouter.get('/invoices/:id', requirePlatform('invoices.view'), validate({ params: schema.idParams }), controller.getAnyById);
+platformRouter.get('/invoices/:id/pdf', requirePlatform('invoices.view'), validate({ params: schema.idParams }), controller.pdfAny);
+platformRouter.post('/invoices/:id/mark-paid', requirePlatform('invoices.manage'), validate({ params: schema.idParams, body: schema.markPaid }),
+  audited('invoice.marked_paid', { targetType: 'PlatformInvoice', society: invoiceSociety, details: (req, data) => ({ number: data?.invoice?.number, ...req.body }) }), controller.markPaid);
+platformRouter.post('/invoices/:id/void', requirePlatform('invoices.manage'), validate({ params: schema.idParams, body: schema.voidInvoice }),
+  audited('invoice.voided', { targetType: 'PlatformInvoice', society: invoiceSociety, details: (req, data) => ({ number: data?.number, ...req.body }) }), controller.voidInvoice);
+platformRouter.post('/billing/run', requirePlatform('billing.run'), audited('billing.run', { details: (_req, data) => data }), controller.runBilling);
+platformRouter.get('/subscriptions/:societyId', requirePlatformAny('societies.view', 'invoices.view'), validate({ params: schema.societyParams }), controller.getForSociety);
+platformRouter.patch('/subscriptions/:societyId', requirePlatform('invoices.manage'), validate({ params: schema.societyParams, body: schema.updateForSociety }),
+  audited('subscription.updated', { targetType: 'Society', targetId: (req) => req.params.societyId, society: (req) => req.params.societyId }), controller.updateForSociety);

@@ -6,6 +6,7 @@ import User from '../users/user.model.js';
 import { notifyRoles } from '../notifications/notifications.service.js';
 import * as audit from '../audit/audit.service.js';
 import { ROLES } from '../../common/constants/index.js';
+import { USER_PLATFORM_FIELDS, permissionsFor } from '../platformTeam/access.js';
 
 // A "session" is one refresh-token family (one device / browser login).
 export async function list(ctx, currentRefreshToken) {
@@ -62,8 +63,8 @@ const SUPPORT_MINUTES = 60;
 // Gives the platform owner a temporary admin membership in a society (for support), fully audited and visible
 // to the society's admins. It expires on its own after an hour.
 export async function startSupportSession(ctx, societyId, reason) {
-  const user = await User.findById(ctx.userId).select('platformRole name').lean();
-  if (user?.platformRole !== 'super_admin') throw ApiError.forbidden('Platform admins only');
+  const user = await User.findById(ctx.userId).select(`name ${USER_PLATFORM_FIELDS}`).lean();
+  if (!(await permissionsFor(user))?.includes('support.access')) throw ApiError.forbidden('Your platform role cannot open support sessions');
   const expiresAt = new Date(Date.now() + SUPPORT_MINUTES * 60 * 1000);
   // Never turn a real staff role the owner may hold in this society into a temporary one.
   const own = await Membership.findOne({ user: ctx.userId, society: societyId, unit: null, support: { $ne: true } }).lean();

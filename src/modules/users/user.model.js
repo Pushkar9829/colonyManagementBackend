@@ -23,7 +23,12 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, trim: true },
     passwordHash: { type: String, required: true, select: false },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' }, // whole-account switch
-    platformRole: { type: String, enum: ['super_admin'] }, // SaaS owner; no society needed
+    // Platform team (no society needed): 'super_admin' = Owner (every permission); 'staff' = a member whose
+    // permissions come from platformRoleId. platformStatus 'inactive' switches only platform access off.
+    platformRole: { type: String, enum: ['super_admin', 'staff'] },
+    platformRoleId: { type: mongoose.Schema.Types.ObjectId, ref: 'PlatformRole' },
+    platformStatus: { type: String, enum: ['active', 'inactive'] },
+    platformAddedAt: Date,
     lastMembership: { type: mongoose.Schema.Types.ObjectId, ref: 'Membership' }, // reopened after login
     notificationPrefs: {
       sms: { type: Boolean, default: true },

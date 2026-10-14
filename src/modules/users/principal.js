@@ -3,6 +3,7 @@ import Membership from './membership.model.js';
 import Society from '../society/society.model.js';
 import ApiError from '../../common/errors/ApiError.js';
 import { ROLES } from '../../common/constants/index.js';
+import { permissionsFor } from '../platformTeam/access.js';
 
 const MFA_POLICY_ROLES = [ROLES.ADMIN, ROLES.ACCOUNTANT];
 
@@ -12,10 +13,13 @@ export async function loadPrincipal(userId, membershipId) {
   const { mfa, ...user } = (await User.findById(userId).select('+mfa').lean()) || {};
   if (!user._id || user.status !== 'active') throw ApiError.unauthorized('Account is not active');
 
+  // Platform team members carry their console permissions in every session (null for everyone else).
+  const platformPermissions = await permissionsFor(user);
+
   if (!membershipId) {
-    // Platform session (no society) — only for the SaaS owner.
-    if (user.platformRole !== 'super_admin') throw ApiError.unauthorized('Choose a society to continue');
-    return { ...user, role: ROLES.SUPER_ADMIN, society: null, unit: null, membershipId: null };
+    // Platform session (no society) — only for active platform team members.
+    if (!platformPermissions) throw ApiError.unauthorized('Choose a society to continue');
+    return { ...user, role: ROLES.SUPER_ADMIN, society: null, unit: null, membershipId: null, platformPermissions };
   }
 
   const m = await Membership.findOne({ _id: membershipId, user: user._id }).lean();
@@ -32,6 +36,7 @@ export async function loadPrincipal(userId, membershipId) {
     residentType: m.residentType,
     designation: m.designation,
     membershipId: m._id,
+    platformPermissions,
     // Society policy: admins and accountants must turn on two-step verification before using the app
     // (support sessions are exempt). authenticate() then allows only the /auth endpoints.
     mfaSetupRequired: Boolean(society.settings?.security?.requireMfa) && MFA_POLICY_ROLES.includes(m.role) && !m.support && !mfa?.enabled,

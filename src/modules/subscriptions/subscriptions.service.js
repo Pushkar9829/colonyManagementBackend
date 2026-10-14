@@ -247,7 +247,7 @@ export async function runDunning(now = new Date()) {
         await Subscription.updateOne({ _id: sub._id }, { status: 'suspended', autoSuspendReason: reason, suspendedAt: now });
         result.suspended += 1;
         // eslint-disable-next-line no-await-in-loop
-        await emailPlatformTeam({ subject: `Society suspended for non-payment (${inv.number})`, text: `The society was suspended automatically: ${reason}` });
+        await emailPlatformTeam({ permission: 'invoices.manage', subject: `Society suspended for non-payment (${inv.number})`, text: `The society was suspended automatically: ${reason}` });
       }
       // eslint-disable-next-line no-await-in-loop
       await remind(inv, 'suspended', now, { title: 'Your ColonyHub account is suspended', body: `${reason} Members cannot use the app until it is paid.` });
@@ -342,7 +342,7 @@ async function settle(payment, actorId) {
     payment.status = 'failed';
     payment.notes = 'Captured but not applied: invoice was already paid or voided. Refund required.';
     await payment.save();
-    await emailPlatformTeam({ subject: 'Subscription payment needs a refund', text: `Payment ${payment.providerPaymentId || payment._id} (${money(payment.amount)}) could not be applied.` });
+    await emailPlatformTeam({ permission: 'invoices.manage', subject: 'Subscription payment needs a refund', text: `Payment ${payment.providerPaymentId || payment._id} (${money(payment.amount)}) could not be applied.` });
     throw ApiError.conflict('This invoice is no longer payable');
   }
   payment.status = 'success';
@@ -363,7 +363,7 @@ async function settle(payment, actorId) {
   );
   audit.record({ societyId: invoice.society, userId: actorId },'subscription.payment', 'PlatformInvoice', invoice._id, { number: invoice.number, amount: payment.amount, method: payment.method });
   await notifyRoles(invoice.society, [ROLES.ADMIN], { type: 'subscription', title: `Payment received for ${invoice.number}`, body: `${money(payment.amount)} · paid until ${localDateString(paidUntil)}`, link: '/subscription', channels: ['inapp', 'email'] });
-  await emailPlatformTeam({ subject: `Subscription paid: ${invoice.number}`, text: `${money(payment.amount)} received (${payment.method}).${lift ? ' The society was reactivated.' : ''}` });
+  await emailPlatformTeam({ permission: 'invoices.manage', subject: `Subscription paid: ${invoice.number}`, text: `${money(payment.amount)} received (${payment.method}).${lift ? ' The society was reactivated.' : ''}` });
   return { invoice: strip(invoice), payment: payment.toObject(), paidUntil, reactivated: Boolean(lift) };
 }
 

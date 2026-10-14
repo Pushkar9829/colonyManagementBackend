@@ -198,8 +198,12 @@ async function eraseKycFiles(userId) {
 }
 
 export async function anonymise(userId, ctx) {
-  const user = await User.findById(userId).select('name email phone').lean();
+  const user = await User.findById(userId).select('name email phone platformRole platformStatus').lean();
   if (!user) throw ApiError.notFound('User not found');
+  if (user.platformRole === 'super_admin') {
+    const otherOwners = await User.countDocuments({ _id: { $ne: userId }, platformRole: 'super_admin', status: 'active', platformStatus: { $ne: 'inactive' } });
+    if (!otherOwners) throw ApiError.conflict('This person is the only platform Owner. Make someone else an Owner before deleting this account.');
+  }
   const memberships = await Membership.find({ user: userId, status: { $in: OPEN } }).select('society unit').lean();
   const societies = [...new Set((await Membership.distinct('society', { user: userId })).map(String))];
   const oid = new mongoose.Types.ObjectId(String(userId));
@@ -215,7 +219,7 @@ export async function anonymise(userId, ctx) {
         notificationPrefs: { sms: false, whatsapp: false, email: false },
         anonymisedAt: new Date(),
       },
-      $unset: { email: 1, phone: 1, mfa: 1, platformRole: 1, lastMembership: 1, lastLoginAt: 1 },
+      $unset: { email: 1, phone: 1, mfa: 1, platformRole: 1, platformRoleId: 1, platformStatus: 1, platformAddedAt: 1, lastMembership: 1, lastLoginAt: 1 },
     },
   );
   await Membership.updateMany({ user: userId, status: { $in: OPEN } }, { $set: { status: 'inactive' } });

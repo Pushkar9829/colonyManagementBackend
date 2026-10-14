@@ -3,7 +3,7 @@ import ApiError from '../../common/errors/ApiError.js';
 import { storage } from '../../integrations/storage.js';
 
 export const MAX_BYTES = 5 * 1024 * 1024;
-export const FOLDERS = ['complaints', 'visitors', 'documents', 'notices', 'staffhr', 'facility', 'household', 'amenities', 'events', 'forum', 'lostfound', 'marketplace', 'chat', 'expenses', 'support', 'builder', 'parcels', 'security'];
+export const FOLDERS = ['complaints', 'visitors', 'documents', 'notices', 'staffhr', 'facility', 'household', 'amenities', 'events', 'forum', 'lostfound', 'marketplace', 'chat', 'expenses', 'support', 'builder', 'parcels', 'security', 'luckydraw'];
 
 // Detects the real type from the file's first bytes; the browser-declared type can be spoofed.
 function sniff(buf) {

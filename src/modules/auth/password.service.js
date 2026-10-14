@@ -57,6 +57,20 @@ export async function sendInvite(userId, societyName) {
   return email.name === 'console' && (!env.isProd || env.DEMO_MODE) ? link : null;
 }
 
+// "Set your password" email for a new platform team member. Same invite token as sendInvite.
+export async function sendPlatformInvite(userId, roleName) {
+  const user = await User.findById(userId).select('name email').lean();
+  if (!user?.email) return null;
+  const token = await issueToken(user._id, 'invite');
+  const link = appLink(`/reset-password?token=${token}&invite=1`);
+  await email.send({
+    to: user.email,
+    subject: 'You have been added to the ColonyHub platform team',
+    text: `Hi ${user.name},\n\nYou have been added to the ColonyHub platform team${roleName ? ` as ${roleName}` : ''}. Set your password here (valid for 7 days):\n${link}\n`,
+  });
+  return email.name === 'console' && (!env.isProd || env.DEMO_MODE) ? link : null;
+}
+
 export async function checkToken(token) {
   const doc = await PasswordReset.findOne({ tokenHash: sha256(token), usedAt: null, expiresAt: { $gt: new Date() } }).lean();
   if (!doc) throw new ApiError(400, 'RESET_INVALID', 'This link is invalid or has expired. Request a new one.');

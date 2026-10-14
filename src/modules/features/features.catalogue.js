@@ -17,12 +17,14 @@ export const FEATURES = Object.freeze([
   { key: 'documents', label: 'Documents', description: 'Society document library' },
   { key: 'requests', label: 'Requests', description: 'NOC, move-in / move-out and other requests' },
   { key: 'builder', label: 'Builder handover', description: 'Possession, snag lists and handover to the association' },
+  { key: 'luckyDraw', label: 'Lucky draws', description: 'Society lucky draws that members can join' },
 ]);
 
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 
 const BASIC = ['parking', 'events', 'forum', 'parcels', 'documents', 'requests', 'expenses'];
 const STANDARD = [...BASIC, 'marketplace', 'chat', 'elections', 'accounting', 'meters', 'assets', 'patrols'];
+// luckyDraw is deliberately in no tier list: only trial and premium (every key) include it.
 
 // What each plan includes before any per-society override. Free = core modules only.
 export const PLAN_FEATURES = Object.freeze({

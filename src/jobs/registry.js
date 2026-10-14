@@ -2,6 +2,7 @@
 // Each module exports an array of { name, everyMs, run } from src/modules/<module>/<module>.jobs.js
 // and adds it here with one import line and one spread line. Names must be unique.
 // ---- job imports (add below this line) ----
+import luckyDrawJobs from '../modules/luckyDraw/luckyDraw.jobs.js';
 import { ASSET_JOBS } from '../modules/assets/assets.jobs.js';
 import { MAINTENANCE_JOBS } from '../modules/maintenance/maintenance.jobs.js';
 import { INVENTORY_JOBS } from '../modules/inventory/inventory.jobs.js';
@@ -30,6 +31,7 @@ import lostFoundJobs from '../modules/lostFound/lostFound.jobs.js';
 
 export const MODULE_JOBS = [
   // ---- job spreads (add below this line) ----
+  ...luckyDrawJobs,
   ...ASSET_JOBS,
   ...MAINTENANCE_JOBS,
   ...INVENTORY_JOBS,

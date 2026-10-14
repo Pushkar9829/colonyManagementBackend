@@ -17,6 +17,8 @@ import * as mfa from './mfa.service.js';
 import * as societyService from '../society/society.service.js';
 import * as usersService from '../users/users.service.js';
 import { defaultMembership } from '../users/principal.js';
+import { USER_PLATFORM_FIELDS, permissionsFor } from '../platformTeam/access.js';
+import PlatformRole from '../platformTeam/platformRole.model.js';
 import { notifyRoles } from '../notifications/notifications.service.js';
 import * as audit from '../audit/audit.service.js';
 
@@ -61,7 +63,7 @@ const MEMBERSHIP_POPULATE = [
 
 // The signed-in person, the membership currently open, and every membership they can switch to.
 export async function profile(userId, membershipId) {
-  const { mfa: mfaState, ...user } = (await User.findById(userId).select('name email phone status platformRole notificationPrefs lastLoginAt mfa.enabled').lean()) || {};
+  const { mfa: mfaState, ...user } = (await User.findById(userId).select(`name email phone notificationPrefs lastLoginAt mfa.enabled ${USER_PLATFORM_FIELDS}`).lean()) || {};
   if (!user._id) throw ApiError.notFound('User not found');
   const memberships = await Membership.find({
     user: userId,
@@ -73,8 +75,17 @@ export async function profile(userId, membershipId) {
     .lean();
   const current = memberships.find((m) => String(m._id) === String(membershipId));
   const mfaEnabled = Boolean(mfaState?.enabled);
+  // Platform team: what the console may show (null for everyone else). The role name is for display only.
+  const platformPermissions = await permissionsFor(user);
+  const platformRoleName = platformPermissions
+    ? user.platformRole === 'super_admin'
+      ? 'Owner'
+      : (await PlatformRole.findById(user.platformRoleId).select('name').lean())?.name
+    : undefined;
   return {
     ...user,
+    platformPermissions,
+    platformRoleName,
     mfaEnabled,
     mfaSetupRequired: !mfaEnabled && (await societyRequiresMfa(current)),
     // flat fields for the current context (what the UI reads everywhere)
@@ -112,7 +123,8 @@ async function societyRequiresMfa(membership) {
 async function loginUser(user, meta, { via, secondFactorDone = false } = {}) {
   if (user.status !== 'active') throw new ApiError(403, 'ACCOUNT_INACTIVE', 'Your account is not active');
   const membership = await defaultMembership(user);
-  if (!membership && user.platformRole !== 'super_admin') {
+  if (!membership && !(await permissionsFor(user))) {
+    if (user.platformRole && user.platformStatus === 'inactive') throw new ApiError(403, 'PLATFORM_ACCESS_OFF', 'Your platform team access has been switched off');
     const pending = await Membership.exists({ user: user._id, status: 'pending' });
     if (pending) throw new ApiError(403, 'PENDING_APPROVAL', 'Your request is waiting for society admin approval');
     throw new ApiError(403, 'NO_MEMBERSHIP', 'Your account is not linked to any active society');
@@ -149,7 +161,7 @@ export async function switchMembership(ctx, membershipId, meta) {
     const m = await Membership.findOne({ _id: membershipId, user: ctx.userId }).lean();
     if (!m) throw ApiError.notFound('Membership not found');
     if (m.status !== 'active') throw ApiError.forbidden(m.status === 'pending' ? 'This home is still waiting for approval' : 'This membership is not active');
-  } else if (ctx.user.platformRole !== 'super_admin') {
+  } else if (!ctx.user.platformPermissions) {
     throw ApiError.forbidden('Choose a society');
   }
   await User.updateOne({ _id: ctx.userId }, { lastMembership: membershipId || undefined });
@@ -174,9 +186,9 @@ export async function refresh(token, meta) {
   let membershipId = stored.membership;
   if (membershipId && !(await Membership.exists({ _id: membershipId, user: user._id, status: 'active' }))) {
     membershipId = (await defaultMembership(user))?._id;
-    if (!membershipId && user.platformRole !== 'super_admin') throw expired();
+    if (!membershipId && !(await permissionsFor(user))) throw expired();
   }
-  if (!membershipId && !stored.membership && user.platformRole !== 'super_admin') throw expired();
+  if (!membershipId && !stored.membership && !(await permissionsFor(user))) throw expired();
 
   if (!stored.revokedAt) {
     stored.revokedAt = new Date();
