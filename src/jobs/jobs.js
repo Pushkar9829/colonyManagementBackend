@@ -68,6 +68,7 @@ export async function duesReminders(now = new Date()) {
       body: `${money(b.total - b.paid)} ${overdue ? 'was' : 'is'} due on ${localDateString(b.dueDate)}`,
       link: '/billing',
       channels: overdue ? ['inapp', 'push', 'sms', 'whatsapp'] : ['inapp', 'push', 'whatsapp'],
+      waKind: 'reminder',
     });
   }
   if (bills.length) await Bill.updateMany({ _id: { $in: bills.map((b) => b._id) } }, { lastReminderAt: now });

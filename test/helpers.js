@@ -26,3 +26,10 @@ export async function teardown() {
 }
 
 export const bearer = (token) => ({ Authorization: `Bearer ${token}` });
+
+// New societies start with online payments off (modules/paymentSettings). Tests written before that put a
+// society back on the platform account (the pre-existing behaviour) to keep exercising the payment flows.
+export async function onlinePaymentsLegacy(societyId) {
+  const { default: PaymentSettings } = await import('../src/modules/paymentSettings/paymentSettings.model.js');
+  await PaymentSettings.updateOne({ society: societyId }, { mode: 'platform_legacy', enabled: true, status: 'active' }, { upsert: true });
+}

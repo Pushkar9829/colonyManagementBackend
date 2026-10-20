@@ -5,6 +5,7 @@ import * as service from './auth.service.js';
 import * as passwords from './password.service.js';
 import * as sessions from './sessions.service.js';
 import * as mfa from './mfa.service.js';
+import { actingProfile } from '../loginAs/acting.js';
 
 const meta = (req) => ({ ip: req.ip, userAgent: req.headers['user-agent'] });
 
@@ -17,7 +18,7 @@ export const logout = asyncHandler(async (req, res) => {
 });
 export const lookupSociety = asyncHandler(async (req, res) => ok(res, await service.lookupSociety(req.params.code)));
 export const join = asyncHandler(async (req, res) => created(res, await service.join(req.body)));
-export const me = asyncHandler(async (req, res) => ok(res, await service.profile(req.user._id, req.user.membershipId)));
+export const me = asyncHandler(async (req, res) => ok(res, actingProfile(req.user, await service.profile(req.user._id, req.user.membershipId))));
 export const switchMembership = asyncHandler(async (req, res) => ok(res, await service.switchMembership(ctx(req), req.body.membershipId, meta(req))));
 export const addHome = asyncHandler(async (req, res) => created(res, await service.addHome(ctx(req), req.body)));
 export const updateMe = asyncHandler(async (req, res) => ok(res, await service.updateMe(ctx(req), req.body)));

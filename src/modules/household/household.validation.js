@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { dateOnly, idParams, objectId, pageQuery, phone } from '../../common/utils/schemas.js';
 import { BLOOD_GROUPS, PET_TYPES, RELATIONS } from './household.model.js';
+import { anniversaryAfterBirth, personalFields } from '../people/occupation.js';
 
 export { idParams };
 
@@ -26,9 +27,14 @@ const memberFields = {
   phone: phone().optional().or(z.literal('').transform(() => undefined)),
   photo: objectId().optional().nullable(), // upload id ('household' folder)
   ...medical,
+  anniversaryDate: personalFields.anniversaryDate,
+  gender: personalFields.gender,
+  occupation: personalFields.occupation,
+  showBirthday: z.boolean().optional(),
 };
-export const memberBody = z.object({ ...memberFields, relation: memberFields.relation.default('other') });
-export const memberUpdate = z.object(memberFields).partial();
+const anniversaryCheck = [(v) => anniversaryAfterBirth({ dateOfBirth: v.dob, anniversaryDate: v.anniversaryDate }), { message: 'Anniversary must be after the date of birth', path: ['anniversaryDate'] }];
+export const memberBody = z.object({ ...memberFields, relation: memberFields.relation.default('other') }).refine(...anniversaryCheck);
+export const memberUpdate = z.object(memberFields).partial().refine(...anniversaryCheck);
 
 const petFields = {
   name: text(60).min(1),

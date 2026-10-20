@@ -10,6 +10,10 @@ const directoryProfileSchema = new mongoose.Schema(
     showPhone: { type: Boolean, default: false },
     showEmail: { type: Boolean, default: false },
     showProfession: { type: Boolean, default: false },
+    // Personal details (modules/people): birthday shows day + month only, never the year.
+    // showBirthday also puts the person on the society's "Today's birthdays" card.
+    showBirthday: { type: Boolean, default: false },
+    showOccupation: { type: Boolean, default: false },
     profession: { type: String, trim: true, maxlength: 80 },
     skills: [{ type: String, trim: true, maxlength: 40 }],
     about: { type: String, trim: true, maxlength: 300 },

@@ -20,7 +20,7 @@ import { notifyUnit } from '../notifications/notifications.service.js';
 import { sendEmailQuietly } from '../../integrations/email.js';
 import { invalidate } from '../../realtime/socket.js';
 import * as audit from '../audit/audit.service.js';
-import { mockProvider, provider } from './providers.js';
+import { getGateway } from '../paymentSettings/paymentSettings.service.js';
 
 const isResident = (ctx) => ctx.role === ROLES.RESIDENT;
 const OPEN = ['unpaid', 'partial'];
@@ -102,6 +102,7 @@ async function applySettlement(ctx, payment, bill, { allowExcess = false } = {})
     body: `${money(payment.amount)} ${what} · ${payment.receiptNumber}${bill && excess ? ` (${money(excess)} kept as advance)` : ''}`,
     link: '/billing',
     channels: ['inapp', 'push', 'whatsapp'],
+    waKind: 'receipt',
   });
   emailReceiptToHousehold(ctx.societyId, payment._id).catch((err) => logger.warn({ err: err.message }, 'receipt email failed'));
   audit.record(ctx, 'payment.recorded', 'Payment', payment._id, { bill: bill?.billNumber, amount: payment.amount, method: payment.method, advance: excess });
@@ -150,6 +151,8 @@ export async function recordAdvance(ctx, data) {
 export async function createOrder(ctx, billId) {
   const bill = await openBill(ctx, billId);
   const amount = bill.total - bill.paid;
+  // The society's own gateway (or Route / legacy platform account): money goes to the society.
+  const provider = await getGateway(ctx.societyId);
   const order = await provider.createOrder({ amount, receipt: bill.billNumber, notes: { bill: String(bill._id) } });
   await Payment.create({
     society: ctx.societyId,
@@ -168,6 +171,7 @@ export async function createOrder(ctx, billId) {
 // Resident pays ahead online; the money becomes advance credit.
 export async function createAdvanceOrder(ctx, amount) {
   if (!ctx.unitId) throw ApiError.badRequest('Open your home to pay');
+  const provider = await getGateway(ctx.societyId);
   const order = await provider.createOrder({ amount, receipt: `ADV-${Date.now()}`, notes: { unit: String(ctx.unitId), purpose: 'advance' } });
   await Payment.create({
     society: ctx.societyId,
@@ -187,6 +191,7 @@ export async function verifyOnline(ctx, { orderId, paymentId, signature }) {
   const payment = await Payment.findOne({ society: ctx.societyId, providerOrderId: orderId });
   if (!payment) throw ApiError.notFound('Order not found');
   if (payment.status === 'success') return Payment.findById(payment._id).populate(POPULATE).lean(); // idempotent
+  const provider = await getGateway(ctx.societyId, { purpose: 'settle' });
   if (!(await provider.verify({ orderId, paymentId, signature }))) {
     payment.status = 'failed';
     await payment.save();
@@ -206,8 +211,9 @@ async function captureOnline(ctx, payment, paymentId) {
 
 // Provider webhook: the order's payment was captured (the webhook body's signature is already checked).
 // Covers residents who paid but closed the app before verify ran. Returns false for unknown orders.
-export async function captureByOrder({ orderId, paymentId }) {
-  const payment = await Payment.findOne({ providerOrderId: orderId, method: 'online' });
+// societyId: set for a society's own-gateway webhook, which may only settle that society's orders.
+export async function captureByOrder({ orderId, paymentId, societyId }) {
+  const payment = await Payment.findOne({ providerOrderId: orderId, method: 'online', ...(societyId ? { society: societyId } : {}) });
   if (!payment) return false;
   if (['created', 'failed'].includes(payment.status)) {
     const ctx = { societyId: payment.society, userId: payment.paidBy, role: ROLES.RESIDENT, unitId: payment.unit, ip: 'webhook' };
@@ -216,11 +222,13 @@ export async function captureByOrder({ orderId, paymentId }) {
   return true;
 }
 
-// Dev-only helper standing in for the provider checkout: returns a valid mock payment id + signature.
-export function mockSign(orderId) {
+// Dev-only helper standing in for the provider checkout: returns a valid mock payment id + signature,
+// signed with the society's own (mock) account.
+export async function mockSign(orderId, societyId) {
+  const provider = await getGateway(societyId, { purpose: 'settle' });
   if (provider.name !== 'mock') throw ApiError.notFound();
   const paymentId = `mock_pay_${crypto.randomBytes(8).toString('hex')}`;
-  return { orderId, paymentId, signature: mockProvider.sign(orderId, paymentId) };
+  return { orderId, paymentId, signature: provider.sign(orderId, paymentId) };
 }
 
 export function list(ctx, filters, pagination) {
@@ -269,7 +277,7 @@ export async function emailReceipt(ctx, id) {
   if (!ctx.user?.email) throw ApiError.badRequest('Add an email address to your profile first');
   const data = await receipt(ctx, id);
   const file = await receiptFile(data);
-  sendEmailQuietly({ to: ctx.user.email, subject: `Receipt ${data.payment.receiptNumber}`, text: receiptText(ctx.user.name, data), attachments: [{ filename: file.filename, content: file.buffer, type: 'application/pdf' }] });
+  sendEmailQuietly({ to: ctx.user.email, society: ctx.societyId, subject: `Receipt ${data.payment.receiptNumber}`, text: receiptText(ctx.user.name, data), attachments: [{ filename: file.filename, content: file.buffer, type: 'application/pdf' }] });
   return { sent: true, to: ctx.user.email };
 }
 
@@ -286,7 +294,7 @@ export async function emailReceiptToHousehold(societyId, paymentId) {
   const data = await receiptData(societyId, payment);
   const file = await receiptFile(data);
   for (const u of recipients) {
-    sendEmailQuietly({ to: u.email, subject: `Payment receipt ${payment.receiptNumber}`, text: receiptText(u.name, data), attachments: [{ filename: file.filename, content: file.buffer, type: 'application/pdf' }] });
+    sendEmailQuietly({ to: u.email, society: societyId, subject: `Payment receipt ${payment.receiptNumber}`, text: receiptText(u.name, data), attachments: [{ filename: file.filename, content: file.buffer, type: 'application/pdf' }] });
   }
 }
 

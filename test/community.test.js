@@ -1,6 +1,6 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bearer, setup, teardown } from './helpers.js';
+import { bearer, onlinePaymentsLegacy, setup, teardown } from './helpers.js';
 
 let api;
 const s = {};
@@ -30,6 +30,7 @@ async function makeSociety(prefix, name, residents) {
   });
   assert.equal(reg.status, 201, JSON.stringify(reg.body));
   const admin = reg.body.data;
+  await onlinePaymentsLegacy(admin.user.society._id);
   const a = bearer(admin.accessToken);
   const block = await api.post('/api/v1/blocks').set(a).send({ name: 'A' });
   await api.post('/api/v1/units/bulk').set(a).send({ block: block.body.data._id, fromFloor: 1, toFloor: 1, unitsPerFloor: 4, areaSqft: 900 });

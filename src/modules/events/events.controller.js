@@ -27,7 +27,7 @@ export const listRsvps = asyncHandler(async (req, res) => {
 
 export const createOrder = asyncHandler(async (req, res) => ok(res, await service.createOrder(ctx(req), req.params.id)));
 export const verify = asyncHandler(async (req, res) => ok(res, await service.verifyPayment(ctx(req), req.body)));
-export const mockSign = asyncHandler(async (req, res) => ok(res, service.mockSign(req.body.orderId)));
+export const mockSign = asyncHandler(async (req, res) => ok(res, await service.mockSign(req.body.orderId, req.user.society)));
 export const collect = asyncHandler(async (req, res) => ok(res, await service.collectAtVenue(ctx(req), req.params.id, req.params.rsvpId, req.body)));
 export const listTickets = asyncHandler(async (req, res) => {
   const { items, meta } = await service.listTickets(ctx(req), req.params.id, getPagination(query(req)));

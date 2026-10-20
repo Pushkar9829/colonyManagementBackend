@@ -6,7 +6,7 @@ import SubscriptionPayment from './subscriptionPayment.model.js';
 import { nextPlatformNumber } from './platformCounter.model.js';
 import { invoicePdf } from './invoicePdf.js';
 import { appLink, emailPlatformTeam, societyAdminEmails } from './platformMail.js';
-import { BILLING_CYCLES, DEFAULT_PRICES, GST_RATE, PLAN_NAMES, REMIND_BEFORE_DAYS, REMIND_EVERY_DAYS } from './subscriptions.constants.js';
+import { BILLING_CYCLES, CYCLE_LABELS, CYCLE_MONTHS, DEFAULT_PRICES, GST_RATE, LIFETIME_UNTIL, PLAN_NAMES, REMIND_BEFORE_DAYS, REMIND_EVERY_DAYS, isLifetime } from './subscriptions.constants.js';
 import Society from '../society/society.model.js';
 import Unit from '../units/unit.model.js';
 import * as platform from '../platform/platform.service.js';
@@ -43,11 +43,20 @@ const strip = (inv) => {
 };
 
 // ---------- price list ----------
+const PRICE_FIELDS = ['perUnitMonthly', 'flatMonthly', 'quarterlyDiscountPercent', 'yearlyDiscountPercent', 'oneTimePrice', 'oneTimeValidityMonths', 'description', 'updatedAt'];
+
+// Which cycles a plan can be billed on: recurring ones whenever the plan costs something, one-time only
+// when the platform has set a one-time price.
+export const cyclesFor = (price) => BILLING_CYCLES.filter((c) => (c === 'one_time' ? price.oneTimePrice > 0 : price.perUnitMonthly > 0 || price.flatMonthly > 0));
+
 export async function listPrices() {
   const saved = await PlanPrice.find().lean();
   return PLAN_NAMES.map((plan) => {
     const doc = saved.find((p) => p.plan === plan);
-    return { plan, ...DEFAULT_PRICES[plan], ...(doc ? { perUnitMonthly: doc.perUnitMonthly, flatMonthly: doc.flatMonthly, yearlyDiscountPercent: doc.yearlyDiscountPercent, description: doc.description, updatedAt: doc.updatedAt } : {}), custom: Boolean(doc) };
+    // Price documents saved before quarterly / one-time existed lack those fields: the defaults fill them.
+    const own = doc ? Object.fromEntries(PRICE_FIELDS.filter((k) => doc[k] !== undefined).map((k) => [k, doc[k]])) : {};
+    const price = { plan, ...DEFAULT_PRICES[plan], ...own, custom: Boolean(doc) };
+    return { ...price, cycles: cyclesFor(price) };
   });
 }
 
@@ -56,27 +65,57 @@ export async function priceFor(plan) {
 }
 
 export async function updatePrice(platformUser, plan, data) {
-  await PlanPrice.findOneAndUpdate({ plan }, { $set: { ...data, updatedBy: platformUser._id } }, { upsert: true, runValidators: true });
+  // The first save of a plan keeps the default price for every field it does not set.
+  const defaults = Object.fromEntries(Object.entries(DEFAULT_PRICES[plan] || {}).filter(([k]) => data[k] === undefined));
+  await PlanPrice.findOneAndUpdate({ plan }, { $set: { ...data, updatedBy: platformUser._id }, $setOnInsert: defaults }, { upsert: true, runValidators: true });
   logger.info({ plan, data, by: String(platformUser._id) }, 'platform price list updated');
   return priceFor(plan);
 }
 
-// Charge for one billing period. Discount applies to yearly billing only; GST on the discounted subtotal.
+const DISCOUNT_FIELD = { quarterly: 'quarterlyDiscountPercent', yearly: 'yearlyDiscountPercent' };
+const withTax = (subtotal) => {
+  const gst = Math.round((subtotal * GST_RATE) / 100);
+  return { subtotal, gstRate: GST_RATE, gst, total: subtotal + gst };
+};
+
+// Charge for one billing period. Quarterly and yearly carry their own discount; GST on the discounted subtotal.
+// one_time: the plan's fixed one-time price for oneTimeValidityMonths (months 0 + lifetime when unset).
 export function computeCharge({ units, price, cycle }) {
-  const months = cycle === 'yearly' ? 12 : 1;
+  if (cycle === 'one_time') {
+    const validity = price.oneTimeValidityMonths || null;
+    const amount = price.oneTimePrice || 0;
+    const lines = amount > 0 ? [{ description: `One-time licence, ${validity ? `${validity} month${validity > 1 ? 's' : ''}` : 'lifetime'}`, amount }] : [];
+    return { months: validity || 0, lifetime: !validity, lines, ...withTax(amount), discountPercent: 0 };
+  }
+  const months = CYCLE_MONTHS[cycle] || 1;
   const lines = [];
   if (price.perUnitMonthly > 0) {
     lines.push({ description: `${units} units × ${money(price.perUnitMonthly)} per unit per month × ${months} month${months > 1 ? 's' : ''}`, amount: units * price.perUnitMonthly * months });
   }
   if (price.flatMonthly > 0) lines.push({ description: `Platform fee ${money(price.flatMonthly)} per month × ${months}`, amount: price.flatMonthly * months });
   const gross = lines.reduce((s, l) => s + l.amount, 0);
-  const discountPercent = cycle === 'yearly' ? price.yearlyDiscountPercent || 0 : 0;
+  const discountPercent = DISCOUNT_FIELD[cycle] ? price[DISCOUNT_FIELD[cycle]] || 0 : 0;
   const discount = Math.round((gross * discountPercent) / 100);
-  if (discount > 0) lines.push({ description: `Yearly billing discount ${discountPercent}%`, amount: -discount });
-  const subtotal = gross - discount;
-  const gst = Math.round((subtotal * GST_RATE) / 100);
-  return { months, lines, subtotal, gstRate: GST_RATE, gst, total: subtotal + gst, discountPercent };
+  if (discount > 0) lines.push({ description: `${CYCLE_LABELS[cycle]} billing discount ${discountPercent}%`, amount: -discount });
+  return { months, lifetime: false, lines, ...withTax(gross - discount), discountPercent };
 }
+
+// End of a period that starts at `start` (exclusive). Lifetime licences end at LIFETIME_UNTIL.
+export const periodEndFor = (start, charge) => (charge.lifetime ? LIFETIME_UNTIL : addLocalMonths(start, charge.months));
+
+async function assertCycleOffered(societyId, cycle) {
+  if (!cycle) return;
+  const society = await Society.findById(societyId).select('plan').lean();
+  const price = await priceFor(society?.plan?.name || 'free');
+  // Free and trial societies may pick any cycle for later; a paid plan without a one-time price can't use it.
+  if (cycle === 'one_time' && !price.oneTimePrice && (price.perUnitMonthly || price.flatMonthly)) {
+    throw ApiError.badRequest(`The ${society.plan.name} plan has no one-time price. Choose monthly, quarterly or yearly.`);
+  }
+}
+
+// The cycle actually billed: if the platform withdrew a plan's one-time price after a society chose it,
+// the society is billed monthly instead of getting a free "lifetime" period.
+export const billedCycle = (cycle, price) => (cycle === 'one_time' && !price.oneTimePrice ? 'monthly' : cycle || 'monthly');
 
 // ---------- subscription ----------
 export async function ensureSubscription(societyId) {
@@ -91,14 +130,17 @@ async function overview(societyId) {
     Unit.countDocuments({ society: societyId }),
     PlatformInvoice.find({ society: societyId, status: 'unpaid' }).sort({ dueDate: 1 }).lean(),
   ]);
-  const estimate = computeCharge({ units, price, cycle: sub.billingCycle });
+  const cycle = billedCycle(sub.billingCycle, price);
+  const estimate = computeCharge({ units, price, cycle });
   const now = new Date();
   return {
     society,
     subscription: sub,
     price,
     units,
-    nextInvoice: { ...estimate, startsOn: sub.billedUntil || startOfLocalDay(now) },
+    nextInvoice: { ...estimate, cycle, startsOn: sub.billedUntil || startOfLocalDay(now) },
+    // What each cycle would cost now, for the cycle picker.
+    cycleOptions: BILLING_CYCLES.map((c) => ({ cycle: c, label: CYCLE_LABELS[c], available: c !== 'one_time' || price.oneTimePrice > 0, ...computeCharge({ units, price, cycle: c }) })),
     outstanding: unpaid.reduce((s, i) => s + i.total, 0),
     overdueInvoices: unpaid.filter((i) => i.dueDate < now).length,
     suspendsOn: unpaid.length ? addDays(unpaid[0].dueDate, sub.graceDays) : null,
@@ -109,6 +151,7 @@ export const getMine = (ctx) => overview(ctx.societyId);
 export const getForSociety = (societyId) => overview(societyId);
 
 export async function updateMine(ctx, data) {
+  await assertCycleOffered(ctx.societyId, data.billingCycle);
   await ensureSubscription(ctx.societyId);
   await Subscription.updateOne({ society: ctx.societyId }, { $set: data }, { runValidators: true });
   audit.record(ctx, 'subscription.updated', 'Subscription', null, data);
@@ -117,6 +160,7 @@ export async function updateMine(ctx, data) {
 
 export async function updateForSociety(platformUser, societyId, data) {
   if (!(await Society.exists({ _id: societyId }))) throw ApiError.notFound('Society not found');
+  await assertCycleOffered(societyId, data.billingCycle);
   await ensureSubscription(societyId);
   await Subscription.updateOne({ society: societyId }, { $set: data }, { runValidators: true });
   audit.record({ societyId, userId: platformUser._id }, 'platform.subscription_updated', 'Subscription', null, data);
@@ -147,15 +191,16 @@ async function tellSocietyAdmins(invoice, { title, body, attachPdf = false }) {
 // ---------- invoice generation (scheduled) ----------
 async function createInvoice(society, sub, periodStart) {
   const [units, price] = await Promise.all([Unit.countDocuments({ society: society._id }), priceFor(society.plan?.name || 'free')]);
-  const charge = computeCharge({ units, price, cycle: sub.billingCycle });
-  const periodEnd = addLocalMonths(periodStart, charge.months);
-  if (charge.subtotal <= 0) return { periodEnd, invoice: null };
+  const cycle = billedCycle(sub.billingCycle, price);
+  const charge = computeCharge({ units, price, cycle });
+  const periodEnd = periodEndFor(periodStart, charge);
+  if (charge.subtotal <= 0) return { periodEnd: addLocalMonths(periodStart, CYCLE_MONTHS.monthly), invoice: null };
   try {
     const invoice = await PlatformInvoice.create({
       society: society._id,
       number: await nextPlatformNumber('platform_invoice', 'PINV'),
       plan: society.plan?.name || 'free',
-      billingCycle: sub.billingCycle,
+      billingCycle: cycle,
       periodStart,
       periodEnd,
       units,
@@ -183,7 +228,8 @@ export async function generateDueInvoices(now = new Date()) {
     const price = prices.find((p) => p.plan === planName) || { plan: planName, ...DEFAULT_PRICES.free };
     // eslint-disable-next-line no-await-in-loop
     const sub = await ensureSubscription(society._id);
-    if (!price.perUnitMonthly && !price.flatMonthly) {
+    const billable = price.perUnitMonthly || price.flatMonthly || (sub.billingCycle === 'one_time' && price.oneTimePrice);
+    if (!billable) {
       // Nothing to bill on a free plan; billing restarts from the day the society upgrades again.
       // eslint-disable-next-line no-await-in-loop
       if (sub.billedUntil && sub.billedUntil <= now) await Subscription.updateOne({ _id: sub._id }, { $unset: { billedUntil: 1 } });
@@ -202,7 +248,7 @@ export async function generateDueInvoices(now = new Date()) {
       if (invoice) {
         created += 1;
         // eslint-disable-next-line no-await-in-loop
-        await tellSocietyAdmins(invoice, { title: `New ColonyHub invoice ${invoice.number}`, body: `Your ${invoice.billingCycle} subscription invoice for ${money(invoice.total)} (incl. GST) is ready.`, attachPdf: true });
+        await tellSocietyAdmins(invoice, { title: `New ColonyHub invoice ${invoice.number}`, body: `Your ${(CYCLE_LABELS[invoice.billingCycle] || invoice.billingCycle).toLowerCase()} subscription invoice for ${money(invoice.total)} (incl. GST) is ready.`, attachPdf: true });
       }
     }
     // eslint-disable-next-line no-await-in-loop
@@ -471,6 +517,26 @@ export async function voidInvoice(platformUser, id, reason) {
   if (!invoice) throw ApiError.conflict('Only unpaid invoices can be voided');
   audit.record({ societyId: invoice.society, userId: platformUser._id }, 'platform.invoice_voided', 'PlatformInvoice', invoice._id, { number: invoice.number, reason });
   return strip(invoice);
+}
+
+// ---------- prepaid terms (white-label licence keys) ----------
+// A licence key prepays `plan` for one term of `cycle` (one_time: validityMonths, or lifetime when unset).
+// The term starts today, or at the current paid-until if that is later, so applying a key never shortens
+// what was already paid. Billing resumes from the end of the term (proration-free: no partial credit).
+export async function applyPrepaidTerm(societyId, { plan, cycle, validityMonths, keyId }, now = new Date()) {
+  const sub = await ensureSubscription(societyId);
+  const today = startOfLocalDay(now);
+  const from = later(today, sub.paidUntil && sub.paidUntil > today ? sub.paidUntil : null);
+  let until;
+  if (isLifetime(from) || (cycle === 'one_time' && !validityMonths)) until = LIFETIME_UNTIL;
+  else until = addLocalMonths(from, cycle === 'one_time' ? validityMonths : CYCLE_MONTHS[cycle]);
+  if (until > LIFETIME_UNTIL) until = LIFETIME_UNTIL;
+  await platform.systemUpdateSociety(societyId, { plan: { name: plan, validUntil: until } }, 'licence.applied');
+  await Subscription.updateOne(
+    { _id: sub._id },
+    { $set: { billingCycle: cycle, paidUntil: until, billedUntil: later(sub.billedUntil, until), licenceKey: keyId, licenceUntil: until, status: 'active' } },
+  );
+  return { paidUntil: until, lifetime: isLifetime(until) };
 }
 
 export const CYCLES = BILLING_CYCLES;

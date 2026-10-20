@@ -36,7 +36,7 @@ export function invoicePdf({ invoice, society, subscription }) {
     doc.text(`Number: ${invoice.number}`, 350);
     doc.text(`Date: ${d(invoice.createdAt)}`, 350);
     doc.text(`Due: ${d(invoice.dueDate)}`, 350);
-    doc.text(`Period: ${d(invoice.periodStart)} to ${d(new Date(invoice.periodEnd.getTime() - 1))}`, 350);
+    doc.text(invoice.lifetime ? `Period: lifetime from ${d(invoice.periodStart)}` : `Period: ${d(invoice.periodStart)} to ${d(new Date(invoice.periodEnd.getTime() - 1))}`, 350);
     doc.text(`Status: ${invoice.status.toUpperCase()}${invoice.paidAt ? ` (${d(invoice.paidAt)})` : ''}`, 350);
 
     doc.moveDown(2);
@@ -63,7 +63,7 @@ export function invoicePdf({ invoice, society, subscription }) {
 
     doc.font('Helvetica').fontSize(8).fillColor('#64748b');
     doc.text(
-      `Plan: ${invoice.plan} · ${invoice.billingCycle} · ${invoice.units} units. GST charged on the subtotal. This is a computer-generated invoice and needs no signature.`,
+      `Plan: ${invoice.plan} · ${invoice.billingCycle.replace('_', '-')} · ${invoice.units} units. GST charged on the subtotal. This is a computer-generated invoice and needs no signature.`,
       50,
       y + 30,
       { width: 495 },

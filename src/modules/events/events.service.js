@@ -12,7 +12,7 @@ import { money } from '../../common/utils/money.js';
 import { nextNumber } from '../counter/counter.service.js';
 import { notifyUsers } from '../notifications/notifications.service.js';
 import { invalidate } from '../../realtime/socket.js';
-import { mockProvider, provider } from '../payments/providers.js';
+import { getGateway } from '../paymentSettings/paymentSettings.service.js';
 import * as uploads from '../uploads/uploads.service.js';
 import * as audit from '../audit/audit.service.js';
 import { isModerator, memberSummaries, sameId } from '../directory/members.js';
@@ -417,6 +417,7 @@ export async function createOrder(ctx, id) {
   const r = await EventRsvp.findOne({ society: ctx.societyId, event: event._id, user: ctx.userId }).lean();
   if (!r || r.state !== 'confirmed') throw ApiError.conflict('Confirm your RSVP before paying');
   if (r.paymentStatus !== 'pending' || !r.amountDue) throw ApiError.conflict(r.paymentStatus === 'paid' ? 'Already paid' : 'Nothing to pay');
+  const provider = await getGateway(ctx.societyId);
   const order = await provider.createOrder({ amount: r.amountDue, receipt: `EVT-${r.ticketCode}`, notes: { event: String(event._id), rsvp: String(r._id) } });
   await EventTicket.create({
     society: ctx.societyId,
@@ -439,7 +440,7 @@ export async function verifyPayment(ctx, { orderId, paymentId, signature }, { tr
   if (!ticket) throw ApiError.notFound('Order not found');
   const r = await EventRsvp.findById(ticket.rsvp).lean();
   if (ticket.status === 'success') return { ticket: ticket.toObject(), rsvp: presentRsvp(r) }; // idempotent
-  if (!trusted && !(await provider.verify({ orderId, paymentId, signature }))) {
+  if (!trusted && !(await (await getGateway(ctx.societyId, { purpose: 'settle' })).verify({ orderId, paymentId, signature }))) {
     ticket.status = 'failed';
     await ticket.save();
     throw ApiError.badRequest('Payment verification failed');
@@ -462,8 +463,8 @@ export async function verifyPayment(ctx, { orderId, paymentId, signature }, { tr
 }
 
 // Provider webhook: an event ticket order was captured. Returns false for unknown orders.
-export async function captureByOrder({ orderId, paymentId }) {
-  const ticket = await EventTicket.findOne({ providerOrderId: orderId }).lean();
+export async function captureByOrder({ orderId, paymentId, societyId }) {
+  const ticket = await EventTicket.findOne({ providerOrderId: orderId, ...(societyId ? { society: societyId } : {}) }).lean();
   if (!ticket) return false;
   if (ticket.status === 'created' || ticket.status === 'failed') {
     const ctx = { societyId: ticket.society, userId: ticket.user, role: 'resident', unitId: null, ip: 'webhook' };
@@ -473,10 +474,11 @@ export async function captureByOrder({ orderId, paymentId }) {
 }
 
 // Dev-only stand-in for the provider checkout (mirrors /payments/mock/sign).
-export function mockSign(orderId) {
+export async function mockSign(orderId, societyId) {
+  const provider = await getGateway(societyId, { purpose: 'settle' });
   if (provider.name !== 'mock') throw ApiError.notFound();
   const paymentId = `mock_pay_${crypto.randomBytes(8).toString('hex')}`;
-  return { orderId, paymentId, signature: mockProvider.sign(orderId, paymentId) };
+  return { orderId, paymentId, signature: provider.sign(orderId, paymentId) };
 }
 
 // Organiser records money collected at the venue.

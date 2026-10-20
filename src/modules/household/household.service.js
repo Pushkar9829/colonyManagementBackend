@@ -51,7 +51,7 @@ async function resolveFiles(ctx, data) {
     if (out[field] === null) out[field] = undefined;
     else [out[field]] = await uploads.resolve(ctx, [out[field]]);
   }
-  for (const k of ['bloodGroup', 'dob', 'age', 'vaccinationDate']) if (out[k] === null) out[k] = undefined;
+  for (const k of ['bloodGroup', 'dob', 'age', 'vaccinationDate', 'anniversaryDate', 'gender', 'occupation']) if (out[k] === null) out[k] = undefined;
   return out;
 }
 
@@ -165,6 +165,28 @@ export async function getForUnit(ctx, unitId) {
   if (!unit) throw ApiError.notFound('Unit not found');
   const [doc, residents] = await Promise.all([Household.findOne({ society: ctx.societyId, unit: unitId }).lean(), residentsOf(ctx.societyId, unitId)]);
   return { ...(present(doc) || { ...EMPTY }), unit, residents };
+}
+
+// Society admin edits the personal details (birthday, anniversary, gender, occupation) of a family member
+// of any home. data uses the people module's field names; dateOfBirth maps to the member's dob.
+export async function updateFamilyPersonal(ctx, unitId, memberId, data) {
+  const doc = await Household.findOne({ society: ctx.societyId, unit: unitId });
+  const item = doc?.members.id(memberId);
+  if (!item) throw ApiError.notFound('Family member not found');
+  const { dateOfBirth, ...rest } = data;
+  const patch = { ...rest };
+  if (dateOfBirth !== undefined) {
+    patch.dob = dateOfBirth;
+    if (dateOfBirth) patch.age = undefined;
+  }
+  if (patch.anniversaryDate && (patch.dob ?? item.dob) && patch.anniversaryDate <= (patch.dob ?? item.dob)) {
+    throw ApiError.validation([{ field: 'body.anniversaryDate', message: 'Anniversary must be after the date of birth' }]);
+  }
+  for (const [k, v] of Object.entries(patch)) item.set(k, v === null ? undefined : v);
+  doc.updatedBy = ctx.userId;
+  await doc.save();
+  audit.record(ctx, 'household.member_personal_updated', 'Household', doc._id, { name: item.name });
+  return present(doc).members.find((m) => String(m._id) === String(memberId));
 }
 
 // ---------- emergency responders ----------

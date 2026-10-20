@@ -11,9 +11,14 @@ export const tokenParams = z.object({ token: z.string().min(16).max(80).regex(/^
 export const updatePrice = z.object({
   perUnitMonthly: paise().max(10000000).optional(),
   flatMonthly: paise().max(100000000).optional(),
+  quarterlyDiscountPercent: z.coerce.number().min(0).max(50).optional(),
   yearlyDiscountPercent: z.coerce.number().min(0).max(50).optional(),
+  oneTimePrice: paise().max(1000000000).optional(), // 0 = no one-time option
+  oneTimeValidityMonths: z.coerce.number().int().min(1).max(120).nullable().optional(), // null = lifetime
   description: z.string().trim().max(300).optional(),
 });
+
+export const applyLicence = z.object({ key: z.string().trim().min(10).max(40) });
 
 const gstin = z.string().trim().toUpperCase().regex(/^[0-9]{2}[A-Z0-9]{13}$/, 'GSTIN must be 15 characters');
 

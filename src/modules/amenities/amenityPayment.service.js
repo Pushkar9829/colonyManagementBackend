@@ -1,11 +1,9 @@
-import crypto from 'node:crypto';
 import AmenityPayment from './amenityPayment.model.js';
 import Bill from '../billing/bill.model.js';
 import Society from '../society/society.model.js';
 import ApiError from '../../common/errors/ApiError.js';
-import env from '../../config/env.js';
 import logger from '../../common/utils/logger.js';
-import { provider } from '../payments/providers.js';
+import { getGateway } from '../paymentSettings/paymentSettings.service.js';
 
 // Gateway order covering one or more charges (e.g. fee + deposit). Earlier unpaid orders for the
 // same booking/pass are marked failed so only the latest checkout can settle it.
@@ -14,6 +12,7 @@ export async function openOrder(ctx, { booking, pass, amenity, unit, charges, re
   if (amount <= 0) throw ApiError.badRequest('Nothing to pay');
   const ref = booking ? { booking } : { pass };
   await AmenityPayment.updateMany({ society: ctx.societyId, ...ref, status: 'created' }, { status: 'failed', notes: 'Superseded by a newer checkout' });
+  const provider = await getGateway(ctx.societyId);
   const order = await provider.createOrder({ amount, receipt, notes: { kind: booking ? 'amenity_booking' : 'amenity_pass', id: String(booking || pass) } });
   await AmenityPayment.insertMany(
     charges
@@ -44,7 +43,7 @@ export async function settleOrder(ctx, { orderId, paymentId, signature }, { trus
   if (records.every((r) => r.status === 'success')) return { records, alreadyPaid: true };
   // A captured payment is real money even if a bad checkout signature marked the order failed.
   if (records.some((r) => r.status !== 'created' && !(trusted && r.status === 'failed'))) throw ApiError.conflict('This order can no longer be paid');
-  if (!trusted && !(await provider.verify({ orderId, paymentId, signature }))) {
+  if (!trusted && !(await (await getGateway(ctx.societyId, { purpose: 'settle' })).verify({ orderId, paymentId, signature }))) {
     await AmenityPayment.updateMany({ _id: { $in: records.map((r) => r._id) } }, { status: 'failed' });
     throw ApiError.badRequest('Payment verification failed');
   }
@@ -81,23 +80,18 @@ export function recordOffline(ctx, { booking, pass, amenity, unit, user, charges
   );
 }
 
+// Online refunds go back through the account that took the money (the society's own gateway, or the
+// platform account for Route / legacy), resolved by getGateway like every other resident payment.
 async function gatewayRefund(payment, amount) {
   if (payment.provider === 'offline') return null; // cash/UPI handed back by the office
-  if (payment.provider === 'mock') return `mock_rfnd_${crypto.randomBytes(6).toString('hex')}`; // mock: just mark refunded
-  if (payment.provider === 'razorpay') {
-    const auth = Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString('base64');
-    const res = await fetch(`https://api.razorpay.com/v1/payments/${payment.providerPaymentId}/refund`, {
-      method: 'POST',
-      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, notes: { amenityPayment: String(payment._id) } }),
-    });
-    if (!res.ok) {
-      logger.error({ status: res.status, payment: String(payment._id) }, 'razorpay refund failed');
-      throw new ApiError(502, 'PAYMENT_PROVIDER_ERROR', 'The refund could not be processed. Try again later.');
-    }
-    return (await res.json()).id;
+  if (payment.provider !== 'mock' && payment.provider !== 'razorpay') throw ApiError.badRequest(`Refunds are not supported for provider ${payment.provider}`);
+  const gateway = await getGateway(payment.society, { purpose: 'settle' });
+  try {
+    return (await gateway.refund({ paymentId: payment.providerPaymentId, amount, notes: { amenityPayment: String(payment._id) } })).refundId;
+  } catch (err) {
+    logger.error({ err: err.message, payment: String(payment._id) }, 'gateway refund failed');
+    throw err;
   }
-  throw ApiError.badRequest(`Refunds are not supported for provider ${payment.provider}`);
 }
 
 // Refunds up to `amount` of the given kind's successful payments for a booking/pass. Returns the refunded total.

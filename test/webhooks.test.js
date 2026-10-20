@@ -1,7 +1,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { bearer, setup, teardown } from './helpers.js';
+import { bearer, onlinePaymentsLegacy, setup, teardown } from './helpers.js';
 
 const { default: env } = await import('../src/config/env.js');
 const { default: Mandate } = await import('../src/modules/payments/mandate.model.js');
@@ -38,6 +38,7 @@ before(async () => {
     admin: { name: 'Hook Admin', email: 'admin@hook.test', password: PASSWORD },
   });
   s.admin = reg.body.data;
+  await onlinePaymentsLegacy(reg.body.data.user.society._id);
   const block = await api.post('/api/v1/blocks').set(as('admin')).send({ name: 'A' });
   await api.post('/api/v1/units/bulk').set(as('admin')).send({ block: block.body.data._id, fromFloor: 1, toFloor: 1, unitsPerFloor: 2, areaSqft: 1000 });
   for (const unit of (await api.get('/api/v1/units').set(as('admin'))).body.data) s.units[unit.label] = unit._id;

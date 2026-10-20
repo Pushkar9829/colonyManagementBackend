@@ -23,6 +23,13 @@ import uploadRoutes from './modules/uploads/uploads.routes.js';
 import platformRoutes from './modules/platform/platform.routes.js';
 import deviceRoutes from './modules/devices/devices.routes.js';
 // ---- module route imports (add new modules below this line) ----
+import paymentSettingsRoutes, { platformRouter as paymentSettingsPlatformRoutes } from './modules/paymentSettings/paymentSettings.routes.js';
+import { brandingRouter, licenceRouter, resellerRouter, platformRouter as resellerPlatformRoutes } from './modules/whitelabel/whitelabel.routes.js';
+import peopleRoutes from './modules/people/people.routes.js';
+import celebrationRoutes from './modules/celebrations/celebrations.routes.js';
+import whatsappRoutes, { platformRouter as whatsappPlatformRoutes } from './modules/whatsapp/whatsapp.routes.js';
+import adRoutes from './modules/ads/ads.routes.js';
+import loginAsRoutes from './modules/loginAs/loginAs.routes.js';
 import gateRoutes from './modules/gates/gates.routes.js';
 import luckyDrawRoutes from './modules/luckyDraw/luckyDraw.routes.js';
 import { meRouter as privacyMeRoutes, privacyRouter as privacyRoutes } from './modules/privacy/privacy.routes.js';
@@ -109,6 +116,18 @@ router.use('/uploads', uploadRoutes);
 router.use('/platform', platformRoutes);
 router.use('/devices', deviceRoutes);
 // ---- module route mounts (add new modules below this line) ----
+router.use('/payment-settings', paymentSettingsRoutes);
+router.use('/platform/payment-settings', paymentSettingsPlatformRoutes);
+router.use('/platform/resellers', resellerPlatformRoutes);
+router.use('/reseller', resellerRouter);
+router.use('/branding', brandingRouter);
+router.use('/licence', licenceRouter);
+router.use('/people', peopleRoutes);
+router.use('/celebrations', celebrationRoutes);
+router.use('/whatsapp', whatsappRoutes);
+router.use('/platform', whatsappPlatformRoutes); // /platform/societies/:id/whatsapp (after the console router)
+router.use('/ads', adRoutes);
+router.use('/login-as', loginAsRoutes);
 router.use('/gates', gateRoutes);
 router.use('/lucky-draws', gate('luckyDraw'), luckyDrawRoutes);
 router.use('/me', privacyMeRoutes);

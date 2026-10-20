@@ -1,6 +1,6 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bearer, setup, teardown } from './helpers.js';
+import { bearer, onlinePaymentsLegacy, setup, teardown } from './helpers.js';
 
 let api;
 const s = {}; // shared state across the flow
@@ -27,6 +27,7 @@ describe('auth & onboarding', () => {
     assert.match(res.body.data.user.society.code, /^[A-Z0-9]{6}$/);
     s.admin = res.body.data;
     s.code = res.body.data.user.society.code;
+    await onlinePaymentsLegacy(res.body.data.user.society._id);
   });
 
   test('rejects bad login and validation errors', async () => {

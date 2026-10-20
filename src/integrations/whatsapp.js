@@ -37,6 +37,8 @@ const meta = {
 
 export const whatsapp = env.WHATSAPP_PROVIDER === 'meta' ? meta : consoleWa;
 
+// Bypasses the society's WhatsApp mode and credits. Application code must send through
+// modules/whatsapp/whatsapp.service.js sendWhatsApp() (or a notification with the 'whatsapp' channel) instead.
 export function sendWhatsAppQuietly(to, title, body) {
   if (!to) return;
   whatsapp.sendAlert(to, title, body).catch((err) => logger.warn({ err: err.message, to }, 'WhatsApp delivery failed'));

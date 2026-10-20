@@ -101,6 +101,11 @@ async function checkSecondFactor(user, { code, backupCode }) {
   return 'totp';
 }
 
+// Re-confirms a sensitive action (e.g. "Log in as") with the signed-in user's own code or a backup code.
+export async function confirmSecondFactor(userId, { code, backupCode }) {
+  return checkSecondFactor(await loadWithMfa(userId), { code, backupCode });
+}
+
 // Needs the password and a current code (or a backup code, for someone whose phone is gone).
 export async function disable(ctx, { password, code }) {
   const u = await User.findById(ctx.userId).select('+passwordHash +mfa');

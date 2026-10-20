@@ -1,6 +1,6 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bearer, setup, teardown } from './helpers.js';
+import { bearer, onlinePaymentsLegacy, setup, teardown } from './helpers.js';
 
 let api;
 const s = {};
@@ -54,6 +54,7 @@ before(async () => {
   });
   assert.equal(reg.status, 201, JSON.stringify(reg.body));
   s.admin = reg.body.data;
+  await onlinePaymentsLegacy(reg.body.data.user.society._id);
   const h = H('admin');
   const block = await api.post('/api/v1/blocks').set(h).send({ name: 'A' });
   await api.post('/api/v1/units/bulk').set(h).send({ block: block.body.data._id, fromFloor: 1, toFloor: 1, unitsPerFloor: 4, areaSqft: 900 });

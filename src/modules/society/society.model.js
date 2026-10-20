@@ -47,6 +47,8 @@ const societySchema = new mongoose.Schema(
     setupChecklistDismissedAt: Date,
     suspendedReason: { type: String, trim: true },
     platformNotes: { type: String, trim: true },
+    // White-label partner whose licence key activated this society (modules/whitelabel); its branding applies.
+    reseller: { type: mongoose.Schema.Types.ObjectId, ref: 'Reseller', index: true },
   },
   { timestamps: true },
 );

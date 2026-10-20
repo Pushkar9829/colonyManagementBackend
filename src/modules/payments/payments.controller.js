@@ -11,7 +11,7 @@ export const createOrder = asyncHandler(async (req, res) =>
   created(res, req.body.bill ? await service.createOrder(ctx(req), req.body.bill) : await service.createAdvanceOrder(ctx(req), req.body.advance)),
 );
 export const verifyOnline = asyncHandler(async (req, res) => ok(res, await service.verifyOnline(ctx(req), req.body)));
-export const mockSign = asyncHandler(async (req, res) => ok(res, service.mockSign(req.body.orderId)));
+export const mockSign = asyncHandler(async (req, res) => ok(res, await service.mockSign(req.body.orderId, req.user.society)));
 export const list = asyncHandler(async (req, res) => {
   const q = query(req);
   const { items, meta } = await service.list(ctx(req), q, getPagination(q));

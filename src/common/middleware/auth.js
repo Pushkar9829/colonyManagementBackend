@@ -4,6 +4,7 @@ import ApiError from '../errors/ApiError.js';
 import { loadPrincipal } from '../../modules/users/principal.js';
 import { ROLES } from '../constants/index.js';
 import { isPermission } from '../../modules/platformTeam/permissions.js';
+import { resolveActing } from '../../modules/loginAs/acting.js';
 
 // Verifies the bearer access token and loads the user + active membership onto req.user.
 export async function authenticate(req, _res, next) {
@@ -19,6 +20,8 @@ export async function authenticate(req, _res, next) {
       throw new ApiError(401, 'TOKEN_INVALID', 'Access token is invalid or expired');
     }
     req.user = await loadPrincipal(payload.sub, payload.mid);
+    // "Log in as" token: the session must still be open; the society's MFA rule binds the real person, not the view.
+    if (payload.act) Object.assign(req.user, { actingAs: await resolveActing(payload, req), mfaSetupRequired: false });
     if (req.user.mfaSetupRequired && !req.originalUrl.split('?')[0].startsWith('/api/v1/auth/')) {
       throw new ApiError(403, 'MFA_SETUP_REQUIRED', 'Turn on two-step verification to continue');
     }

@@ -40,7 +40,8 @@ export default async function seed(s) {
       perUnitMonthly: price.perUnitMonthly,
       flatMonthly: price.flatMonthly,
       ...charge,
-      dueDate: addDays(periodStart, 10),
+      // The open invoice is always due after the seed runs, so the demo never suspends itself on start-up.
+      dueDate: periodStart === thisMonth ? new Date(Math.max(addDays(periodStart, 10).getTime(), addDays(new Date(), 7).getTime())) : addDays(periodStart, 10),
       payToken: crypto.randomBytes(24).toString('base64url'),
     }));
   }
@@ -49,7 +50,8 @@ export default async function seed(s) {
   await PlatformInvoice.updateOne({ _id: paid._id }, { status: 'paid', paidAt: payment.paidAt, payment: payment._id });
   await Subscription.findOneAndUpdate(
     { society: s.sid },
-    { billingCycle: 'monthly', billedUntil: invoices[1].periodEnd, paidUntil: paid.periodEnd, billingEmail: 'accounts@greenvalley.test', gstin: '27AABCG1234M1Z2' },
+    // graceDays at the maximum: a demo left running keeps working for months instead of suspending itself.
+    { billingCycle: 'monthly', billedUntil: invoices[1].periodEnd, paidUntil: paid.periodEnd, billingEmail: 'accounts@greenvalley.test', gstin: '27AABCG1234M1Z2', graceDays: 90 },
     { upsert: true },
   );
   await platform.systemUpdateSociety(s.sid, { validUntil: paid.periodEnd }, 'seed.paid_until');

@@ -29,6 +29,8 @@ const userSchema = new mongoose.Schema(
     platformRoleId: { type: mongoose.Schema.Types.ObjectId, ref: 'PlatformRole' },
     platformStatus: { type: String, enum: ['active', 'inactive'] },
     platformAddedAt: Date,
+    // Reseller admin (white-label partner console): sees only this reseller's keys and societies.
+    reseller: { type: mongoose.Schema.Types.ObjectId, ref: 'Reseller' },
     lastMembership: { type: mongoose.Schema.Types.ObjectId, ref: 'Membership' }, // reopened after login
     notificationPrefs: {
       sms: { type: Boolean, default: true },

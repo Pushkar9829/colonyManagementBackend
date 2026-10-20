@@ -342,8 +342,8 @@ export async function verifyPayment(ctx, body, opts) {
 }
 
 // Provider webhook: an amenity order was captured. Returns false for unknown orders.
-export async function captureByOrder({ orderId, paymentId }) {
-  const record = await AmenityPayment.findOne({ providerOrderId: orderId }).lean();
+export async function captureByOrder({ orderId, paymentId, societyId }) {
+  const record = await AmenityPayment.findOne({ providerOrderId: orderId, ...(societyId ? { society: societyId } : {}) }).lean();
   if (!record) return false;
   if (record.status !== 'created' && record.status !== 'failed') return true;
   const ctx = { societyId: record.society, userId: record.user, role: ROLES.RESIDENT, unitId: record.unit, ip: 'webhook' };

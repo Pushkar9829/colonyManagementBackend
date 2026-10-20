@@ -15,6 +15,9 @@ const subscriptionSchema = new mongoose.Schema(
     // Set when the dunning job suspended the society, so a payment only lifts suspensions it caused.
     autoSuspendReason: { type: String },
     suspendedAt: Date,
+    // Prepaid by a white-label licence key (modules/whitelabel): no invoices until licenceUntil.
+    licenceKey: { type: mongoose.Schema.Types.ObjectId, ref: 'LicenceKey' },
+    licenceUntil: Date,
     billingEmail: { type: String, trim: true, lowercase: true },
     gstin: { type: String, trim: true, uppercase: true },
   },

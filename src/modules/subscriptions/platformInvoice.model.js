@@ -13,7 +13,8 @@ const platformInvoiceSchema = new mongoose.Schema(
     billingCycle: { type: String, enum: BILLING_CYCLES, required: true },
     periodStart: { type: Date, required: true },
     periodEnd: { type: Date, required: true }, // exclusive
-    months: { type: Number, required: true },
+    months: { type: Number, required: true }, // 0 for a lifetime one-time licence
+    lifetime: { type: Boolean, default: false },
     units: { type: Number, default: 0 },
     perUnitMonthly: { type: Number, default: 0 },
     flatMonthly: { type: Number, default: 0 },

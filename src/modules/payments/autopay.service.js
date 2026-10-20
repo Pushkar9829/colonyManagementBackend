@@ -10,7 +10,7 @@ import { ROLES } from '../../common/constants/index.js';
 import * as financeSettings from '../financeSettings/financeSettings.service.js';
 import { notifyUnit } from '../notifications/notifications.service.js';
 import * as audit from '../audit/audit.service.js';
-import { provider } from './providers.js';
+import { getGateway } from '../paymentSettings/paymentSettings.service.js';
 import { settlePayment } from './payments.service.js';
 
 const isResident = (ctx) => ctx.role === ROLES.RESIDENT;
@@ -29,6 +29,7 @@ export async function mine(ctx) {
     // authorised by the resident, waiting for the bank
     Mandate.findOne({ society: ctx.societyId, unit: ctx.unitId, status: 'pending', authPaymentId: { $type: 'string' } }).select(PUBLIC).sort({ createdAt: -1 }).lean(),
   ]);
+  const provider = await getGateway(ctx.societyId, { purpose: 'settle' });
   return { enabled: settings.autopayEnabled, provider: provider.name, mandate, pending };
 }
 
@@ -53,6 +54,7 @@ export async function optIn(ctx, { maxAmount, method = 'upi' }) {
     audit.record(ctx, 'autopay.updated', 'AutopayMandate', existing._id, { maxAmount });
     return Mandate.findById(existing._id).select(PUBLIC).populate(POPULATE).lean();
   }
+  const provider = await getGateway(ctx.societyId);
   const token = await provider.registerMandate({ maxAmount, method });
   try {
     const m = await Mandate.create({ society: ctx.societyId, unit: ctx.unitId, user: ctx.userId, method, maxAmount, provider: provider.name, ...token });
@@ -78,7 +80,9 @@ export async function cancel(ctx, id) {
 
 // Stops the bank honouring further debits. Best effort: the mandate is already off on our side.
 function revokeAtBank(m) {
-  provider.cancelToken({ tokenId: m.tokenId, customerId: m.customerId }).catch((err) => logger.warn({ err, mandate: String(m._id) }, 'could not cancel the mandate token'));
+  getGateway(m.society, { purpose: 'settle' })
+    .then((provider) => provider.cancelToken({ tokenId: m.tokenId, customerId: m.customerId }))
+    .catch((err) => logger.warn({ err, mandate: String(m._id) }, 'could not cancel the mandate token'));
 }
 
 // ---------- mandate sign-up (authorised once in the provider's checkout) ----------
@@ -89,6 +93,7 @@ const systemCtx = (m, ip) => ({ societyId: m.society, userId: m.user, role: ROLE
 export async function start(ctx, { maxAmount, method = 'upi' }) {
   await assertEnabled(ctx);
   const user = await User.findById(ctx.userId).select('name email phone').lean();
+  const provider = await getGateway(ctx.societyId);
   const order = await provider.startMandate({ maxAmount, method, user, receipt: `MANDATE-${Date.now()}` });
   // Abandoned sign-ups of this home are dropped; one authorised and waiting for the bank is kept.
   await Mandate.deleteMany({ society: ctx.societyId, unit: ctx.unitId, status: 'pending', authPaymentId: { $exists: false } });
@@ -113,6 +118,7 @@ export async function confirm(ctx, { orderId, paymentId, signature }) {
   const m = await Mandate.findOne({ society: ctx.societyId, unit: ctx.unitId, providerOrderId: orderId });
   if (!m) throw ApiError.notFound('Autopay sign-up not found');
   if (m.status === 'pending' && !m.authPaymentId) {
+    const provider = await getGateway(ctx.societyId, { purpose: 'settle' });
     const r = await provider.confirmMandate({ orderId, paymentId, signature, customerId: m.customerId });
     if (r.status === 'failed' && !r.tokenId) throw ApiError.badRequest(r.error || 'Mandate authorisation failed');
     await finishSignup(m, paymentId, r, ctx.ip);
@@ -206,10 +212,11 @@ async function rejected(m, reason, status = 'cancelled') {
 
 // A mandate's authorisation payment was captured (the resident may have closed the app before
 // confirm() ran). Returns false when the order is not a mandate sign-up.
-export async function onAuthorisationCaptured({ orderId, paymentId }) {
-  const m = await Mandate.findOne({ providerOrderId: orderId });
+export async function onAuthorisationCaptured({ orderId, paymentId, societyId }) {
+  const m = await Mandate.findOne({ providerOrderId: orderId, ...(societyId ? { society: societyId } : {}) });
   if (!m) return false;
   if (m.status === 'pending' && !m.authPaymentId) {
+    const provider = await getGateway(m.society, { purpose: 'settle' });
     const r = await provider.tokenForPayment(paymentId, m.customerId);
     await finishSignup(m, paymentId, r, 'webhook');
   }
@@ -217,9 +224,9 @@ export async function onAuthorisationCaptured({ orderId, paymentId }) {
 }
 
 // token.confirmed / token.rejected / token.cancelled / token.paused.
-export async function onTokenEvent(event, tokenId) {
+export async function onTokenEvent(event, tokenId, societyId) {
   if (!tokenId) return;
-  const list = await Mandate.find({ tokenId, status: { $in: ['pending', 'active'] } }).lean();
+  const list = await Mandate.find({ tokenId, status: { $in: ['pending', 'active'] }, ...(societyId ? { society: societyId } : {}) }).lean();
   for (const m of list) {
     if (event === 'token.confirmed') {
       // eslint-disable-next-line no-await-in-loop
@@ -260,6 +267,16 @@ export async function chargeBills(ctx, bills) {
     (await Mandate.find({ society: ctx.societyId, unit: { $in: bills.map((b) => b.unit) }, status: 'active' }).lean()).map((m) => [String(m.unit), m]),
   );
   const out = { charged: 0, pending: 0, failed: 0, skipped: 0 };
+  if (!mandates.size) return out;
+  let provider;
+  try {
+    provider = await getGateway(ctx.societyId);
+  } catch (err) {
+    // Online payments are off for the society: nothing is debited, the bills wait for manual payment.
+    if (err.code !== 'ONLINE_PAYMENTS_OFF') throw err;
+    out.skipped = mandates.size;
+    return out;
+  }
   for (const b of bills) {
     const mandate = mandates.get(String(b.unit));
     if (!mandate) continue;
@@ -333,8 +350,8 @@ export async function resolveCharge(p, r, ip = 'scheduler') {
 }
 
 // Webhook: a recurring debit was captured or failed. Returns false if the order isn't an autopay charge.
-export async function onChargeEvent({ orderId, status, error }) {
-  const p = await Payment.findOne({ providerOrderId: orderId, method: 'autopay' });
+export async function onChargeEvent({ orderId, status, error, societyId }) {
+  const p = await Payment.findOne({ providerOrderId: orderId, method: 'autopay', ...(societyId ? { society: societyId } : {}) });
   if (!p) return false;
   await resolveCharge(p, { status, error }, 'webhook');
   return true;
@@ -347,7 +364,9 @@ export async function reconcilePending() {
   let failedCount = 0;
   for (const p of pending) {
     // eslint-disable-next-line no-await-in-loop
-    const r = await provider.fetchPayment(p.providerPaymentId).catch(() => ({ status: 'pending' }));
+    const r = await getGateway(p.society, { purpose: 'settle' })
+      .then((provider) => provider.fetchPayment(p.providerPaymentId))
+      .catch(() => ({ status: 'pending' }));
     // eslint-disable-next-line no-await-in-loop
     const outcome = await resolveCharge(p, r).catch((err) => logger.warn({ err, payment: String(p._id) }, 'autopay reconcile failed'));
     if (outcome === 'settled') settled += 1;

@@ -1,7 +1,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
-import { bearer, setup, teardown } from './helpers.js';
+import { bearer, onlinePaymentsLegacy, setup, teardown } from './helpers.js';
 
 const { email } = await import('../src/integrations/email.js');
 const { default: Mandate } = await import('../src/modules/payments/mandate.model.js');
@@ -61,6 +61,7 @@ before(async () => {
   });
   assert.equal(reg.status, 201, JSON.stringify(reg.body));
   s.admin = reg.body.data;
+  await onlinePaymentsLegacy(reg.body.data.user.society._id);
   const h = as('admin');
   const block = await api.post('/api/v1/blocks').set(h).send({ name: 'A' });
   s.block = block.body.data._id;

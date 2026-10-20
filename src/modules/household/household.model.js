@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { GENDERS, occupationSchema } from '../people/occupation.js';
 
 export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 export const RELATIONS = ['spouse', 'child', 'parent', 'grandparent', 'sibling', 'relative', 'other'];
@@ -25,6 +26,11 @@ const familyMemberSchema = new mongoose.Schema(
     phone: { type: String, trim: true },
     photo: attachmentSchema,
     ...medicalFields,
+    // Personal details (modules/people/occupation.js). dob above is the date of birth.
+    anniversaryDate: String, // YYYY-MM-DD
+    gender: { type: String, enum: GENDERS },
+    occupation: { type: occupationSchema, default: undefined },
+    showBirthday: { type: Boolean, default: false }, // opt-in for the society's "Today's birthdays" card
   },
   { timestamps: true },
 );

@@ -2,12 +2,14 @@ import DirectoryProfile from './directoryProfile.model.js';
 import Membership from '../users/membership.model.js';
 import Block from '../units/block.model.js';
 import { escapeRegex } from '../../common/utils/strings.js';
+import { monthDay, occupationText, publicOccupation } from '../people/occupation.js';
+import { detailsFor } from '../people/people.service.js';
 
-const PROFILE_FIELDS = ['listed', 'showPhone', 'showEmail', 'showProfession', 'profession', 'skills', 'about'];
+const PROFILE_FIELDS = ['listed', 'showPhone', 'showEmail', 'showProfession', 'showBirthday', 'showOccupation', 'profession', 'skills', 'about'];
 const COMMITTEE_ROLES = ['admin', 'accountant'];
 const STAFF_ROLES = ['facility_manager', 'guard', 'staff'];
 
-const defaults = () => ({ listed: false, showPhone: false, showEmail: false, showProfession: false, profession: '', skills: [], about: '' });
+const defaults = () => ({ listed: false, showPhone: false, showEmail: false, showProfession: false, showBirthday: false, showOccupation: false, profession: '', skills: [], about: '' });
 
 function pick(doc) {
   const out = defaults();
@@ -31,7 +33,7 @@ export async function updateMine(ctx, data) {
 
 // The privacy gate. Every directory response is built here, from an explicit allow-list:
 // a field the person hid is never copied into the output (not even as null).
-function publicEntry(user, profile, extra) {
+function publicEntry(user, profile, extra, details) {
   const entry = { _id: user._id, name: user.name, ...extra };
   if (profile?.showPhone && user.phone) entry.phone = user.phone;
   if (profile?.showEmail && user.email) entry.email = user.email;
@@ -40,11 +42,16 @@ function publicEntry(user, profile, extra) {
     if (profile.skills?.length) entry.skills = profile.skills;
     if (profile.about) entry.about = profile.about;
   }
+  // Day and month only ("MM-DD"): the birth year is never sent.
+  if (profile?.showBirthday && details?.dateOfBirth) entry.birthday = monthDay(details.dateOfBirth);
+  if (profile?.showOccupation && details?.occupation) entry.occupation = publicOccupation(details.occupation);
   return entry;
 }
 
+const shownOccupation = (r) => (r.profile?.showOccupation ? r.details?.occupation : undefined);
+
 // Residents who opted in, with search over the fields they chose to show.
-export async function list(ctx, { search, block }, { page, limit, skip }) {
+export async function list(ctx, { search, block, occupationType, occupationCategory, institution }, { page, limit, skip }) {
   const profiles = await DirectoryProfile.find({ society: ctx.societyId, listed: true }).lean();
   const byUser = new Map(profiles.map((p) => [String(p.user), p]));
   const memberships = await Membership.find({ society: ctx.societyId, role: 'resident', status: 'active', user: { $in: [...byUser.keys()] } })
@@ -67,19 +74,28 @@ export async function list(ctx, { search, block }, { page, limit, skip }) {
   }
 
   let rows = [...people.values()];
+  const details = await detailsFor(ctx.societyId, rows.map((r) => r.user._id));
+  for (const r of rows) r.details = details.get(String(r.user._id));
   if (block) rows = rows.filter((r) => r.blockIds.includes(String(block)));
+  if (occupationType) rows = rows.filter((r) => shownOccupation(r)?.type === occupationType);
+  if (occupationCategory) rows = rows.filter((r) => shownOccupation(r)?.type === 'working' && shownOccupation(r).working?.category === occupationCategory);
+  if (institution) {
+    const re = new RegExp(escapeRegex(institution), 'i');
+    rows = rows.filter((r) => shownOccupation(r)?.type === 'student' && re.test(shownOccupation(r).student?.institutionName || ''));
+  }
   if (search) {
     const re = new RegExp(escapeRegex(search.trim()), 'i');
     rows = rows.filter((r) => {
       // only fields this person made visible are searchable — otherwise search would leak them
       const haystack = [r.user.name, ...r.units, ...r.blockNames.map((b) => `Block ${b}`)];
       if (r.profile?.showProfession) haystack.push(r.profile.profession || '', ...(r.profile.skills || []));
+      haystack.push(...occupationText(shownOccupation(r)));
       return haystack.some((v) => re.test(v));
     });
   }
   rows.sort((a, b) => (a.units[0] || '').localeCompare(b.units[0] || '', undefined, { numeric: true }) || a.user.name.localeCompare(b.user.name));
   const total = rows.length;
-  const items = rows.slice(skip, skip + limit).map((r) => publicEntry(r.user, r.profile, { units: r.units, isMe: String(r.user._id) === String(ctx.userId) }));
+  const items = rows.slice(skip, skip + limit).map((r) => publicEntry(r.user, r.profile, { units: r.units, isMe: String(r.user._id) === String(ctx.userId) }, r.details));
   return { items, meta: { page, limit, total, pages: Math.ceil(total / limit) || 1 } };
 }
 

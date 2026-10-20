@@ -7,7 +7,7 @@ import { paginate } from '../../common/utils/pagination.js';
 import { emitToUser } from '../../realtime/socket.js';
 import { pushEnabled, sendPush } from '../../integrations/webPush.js';
 import { sendSmsQuietly } from '../../integrations/sms.js';
-import { sendWhatsAppQuietly } from '../../integrations/whatsapp.js';
+import * as whatsappGate from '../whatsapp/whatsapp.service.js';
 import { sendEmailQuietly } from '../../integrations/email.js';
 import env from '../../config/env.js';
 
@@ -42,13 +42,13 @@ async function deliverSms(userIds, { title, body }, urgent) {
   for (const u of await phonesFor(userIds, 'sms', urgent)) sendSmsQuietly(u.phone, text);
 }
 
-async function deliverEmail(userIds, { title, body, link }, urgent) {
+async function deliverEmail(userIds, { title, body, link, society }, urgent) {
   const filter = { _id: { $in: userIds }, email: { $type: 'string' } };
   if (!urgent) filter['notificationPrefs.email'] = { $ne: false };
   const users = await User.find(filter).select('email name').lean();
   const url = link ? `${env.APP_URL.replace(/\/$/, '')}${link}` : env.APP_URL;
   for (const u of users) {
-    sendEmailQuietly({ to: u.email, subject: title, text: `Hi ${u.name},
+    sendEmailQuietly({ to: u.email, society, subject: title, text: `Hi ${u.name},
 
 ${body || title}
 
@@ -57,11 +57,20 @@ Open ColonyHub: ${url}
   }
 }
 
-async function deliverWhatsApp(userIds, { title, body }, urgent) {
-  for (const u of await phonesFor(userIds, 'whatsapp', urgent)) sendWhatsAppQuietly(u.phone, title, body);
+// Every automatic WhatsApp message goes through the gate in modules/whatsapp: it applies the society's
+// WhatsApp mode (off / click-to-chat / api) and charges one credit per message.
+async function deliverWhatsApp(societyId, userIds, { title, body, type, waKind }, urgent) {
+  if ((await whatsappGate.modeOf(societyId)) !== 'api') return;
+  const kind = whatsappGate.kindFor(type, waKind);
+  for (const u of await phonesFor(userIds, 'whatsapp', urgent)) {
+    // eslint-disable-next-line no-await-in-loop
+    await whatsappGate.sendWhatsApp(societyId, u.phone, title, body, { kind, urgent });
+  }
 }
 
-export async function notifyUsers(societyId, userIds, { type, title, body, link, channels = DEFAULT_CHANNELS, urgent = false }) {
+// waKind (optional): what a WhatsApp message is about for credit usage reports — 'bill' | 'receipt' |
+// 'reminder' | 'sos' | 'wishes' | 'notice' | 'other'. Defaults from `type`.
+export async function notifyUsers(societyId, userIds, { type, title, body, link, channels = DEFAULT_CHANNELS, urgent = false, waKind }) {
   const ids = [...new Set(userIds.filter(Boolean).map(String))];
   if (!ids.length) return;
   try {
@@ -74,8 +83,8 @@ export async function notifyUsers(societyId, userIds, { type, title, body, link,
   const payload = { title, body, link, type };
   if (channels.includes('push')) deliverPush(ids, payload).catch(() => {});
   if (channels.includes('sms')) deliverSms(ids, payload, urgent).catch(() => {});
-  if (channels.includes('whatsapp')) deliverWhatsApp(ids, payload, urgent).catch(() => {});
-  if (channels.includes('email')) deliverEmail(ids, payload, urgent).catch(() => {});
+  if (channels.includes('whatsapp')) deliverWhatsApp(societyId, ids, { ...payload, waKind }, urgent).catch(() => {});
+  if (channels.includes('email')) deliverEmail(ids, { ...payload, society: societyId }, urgent).catch(() => {});
 }
 
 const memberIds = async (filter) => (await Membership.find({ ...filter, status: 'active' }).select('user').lean()).map((m) => m.user);

@@ -17,6 +17,8 @@ export const registerSociety = z.object({
     password: password(),
     designation: z.string().trim().max(60).optional(),
   }),
+  // White-label licence key (CH-XXXX-XXXX-XXXX): links the society to the reseller and sets its plan.
+  licenceKey: z.string().trim().max(40).optional().transform((v) => v || undefined),
 });
 
 export const login = z.object({

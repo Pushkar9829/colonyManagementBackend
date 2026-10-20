@@ -17,6 +17,8 @@ export async function loadPrincipal(userId, membershipId) {
   const platformPermissions = await permissionsFor(user);
 
   if (!membershipId) {
+    // Reseller console session: a white-label partner's admin (modules/whitelabel), no platform access.
+    if (!platformPermissions && user.reseller) return { ...user, role: 'reseller_admin', society: null, unit: null, membershipId: null, platformPermissions: null, reseller: user.reseller };
     // Platform session (no society) — only for active platform team members.
     if (!platformPermissions) throw ApiError.unauthorized('Choose a society to continue');
     return { ...user, role: ROLES.SUPER_ADMIN, society: null, unit: null, membershipId: null, platformPermissions };
