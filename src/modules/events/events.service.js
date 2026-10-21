@@ -297,7 +297,7 @@ export async function rsvp(ctx, id, { response, guests = 0, paymentMode }) {
   const event = (await loadEvent(ctx, id)).toObject();
   if (event.status !== 'scheduled') throw ApiError.conflict('This event was cancelled');
   if (!isOpenForRsvp(event)) throw ApiError.conflict('RSVPs are closed for this event');
-  if (guests > event.maxGuests) throw ApiError.badRequest(`You can bring at most ${event.maxGuests} guest${event.maxGuests === 1 ? '' : 's'}`);
+  if (guests > event.maxGuests) throw ApiError.badRequest(event.maxGuests === 1 ? 'You can bring at most {n} guest' : 'You can bring at most {n} guests', { params: { n: event.maxGuests } });
 
   const headcount = response === 'yes' ? 1 + guests : 1;
   const existing = await EventRsvp.findOne({ society: ctx.societyId, event: event._id, user: ctx.userId }).lean();
@@ -313,7 +313,7 @@ export async function rsvp(ctx, id, { response, guests = 0, paymentMode }) {
     const delta = headcount - existing.headcount;
     if (!(await adjustSeats(event._id, delta))) {
       const fresh = await Event.findById(event._id).select('capacity goingCount').lean();
-      throw ApiError.conflict(`Only ${Math.max(0, fresh.capacity - fresh.goingCount)} more seat(s) available`);
+      throw ApiError.conflict('Only {n} more seat(s) available', { params: { n: Math.max(0, fresh.capacity - fresh.goingCount) } });
     }
     state = 'confirmed';
     freedSeats = delta < 0;
@@ -520,10 +520,10 @@ export async function checkIn(ctx, eventId, { code, rsvpId, attendedCount, colle
   const r = await EventRsvp.findOne(filter).lean();
   if (!r) throw ApiError.notFound('Ticket not found for this event');
   if (r.state !== 'confirmed') throw ApiError.conflict(r.state === 'waitlisted' ? 'This RSVP is still on the waitlist' : 'This RSVP is not confirmed');
-  if (r.checkedInAt) throw ApiError.conflict(`Already checked in at ${new Date(r.checkedInAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', timeStyle: 'short' })}`);
+  if (r.checkedInAt) throw ApiError.conflict('Already checked in at {time}', { params: { time: new Date(r.checkedInAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', timeStyle: 'short' }) } });
   let current = r;
   if (r.paymentStatus === 'pending') {
-    if (!collect) throw new ApiError(409, 'PAYMENT_PENDING', `Payment of ${money(r.amountDue)} is pending`, { amountDue: r.amountDue, rsvp: r._id });
+    if (!collect) throw new ApiError(409, 'PAYMENT_PENDING', 'Payment of {amount} is pending', { params: { amount: money(r.amountDue) }, details: { amountDue: r.amountDue, rsvp: r._id } });
     current = (await collectAtVenue(ctx, event._id, r._id, { method: collect })).rsvp;
   }
   const updated = await EventRsvp.findOneAndUpdate(

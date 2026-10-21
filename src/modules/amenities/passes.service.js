@@ -167,7 +167,7 @@ export async function activatePaidPass(ctx, passId) {
 
 export async function markPassPaid(ctx, id, { method, reference }) {
   const pass = await load(ctx, id);
-  if (pass.status !== 'payment_pending') throw ApiError.conflict(`Pass is ${pass.status}`);
+  if (pass.status !== 'payment_pending') throw ApiError.conflict('Pass is {status}', { params: { status: pass.status } });
   await AmenityPayment.updateMany({ society: ctx.societyId, pass: pass._id, status: 'created' }, { status: 'failed', notes: 'Paid at the desk instead' });
   await pay.recordOffline(ctx, { pass: pass._id, amenity: pass.amenity, unit: pass.unit, user: pass.purchasedBy, method, reference, charges: [{ kind: 'fee', amount: pass.price }] });
   pass.status = 'active';
@@ -181,7 +181,7 @@ export async function markPassPaid(ctx, id, { method, reference }) {
 // Residents can drop an unpaid pass; managers can cancel any pass and optionally refund part of it.
 export async function cancelPass(ctx, id, { reason, refundAmount }) {
   const pass = await load(ctx, id);
-  if (!['payment_pending', 'active'].includes(pass.status)) throw ApiError.conflict(`Pass is already ${pass.status}`);
+  if (!['payment_pending', 'active'].includes(pass.status)) throw ApiError.conflict('Pass is already {status}', { params: { status: pass.status } });
   if (!isManager(ctx) && pass.status !== 'payment_pending') throw ApiError.forbidden('Ask the office to cancel an active pass');
   let refunded = 0;
   if (refundAmount) {

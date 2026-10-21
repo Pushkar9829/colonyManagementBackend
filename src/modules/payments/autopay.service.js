@@ -46,7 +46,7 @@ export async function optIn(ctx, { maxAmount, method = 'upi' }) {
   const existing = await Mandate.findOne({ society: ctx.societyId, unit: ctx.unitId, status: 'active' });
   if (existing) {
     if (existing.authorisedMax && maxAmount > existing.authorisedMax) {
-      throw ApiError.badRequest(`Your bank authorised up to ${money(existing.authorisedMax)}. Set up autopay again to raise the limit.`);
+      throw ApiError.badRequest('Your bank authorised up to {amount}. Set up autopay again to raise the limit.', { params: { amount: money(existing.authorisedMax) } });
     }
     existing.maxAmount = maxAmount;
     if (existing.provider === 'mock') existing.method = method;

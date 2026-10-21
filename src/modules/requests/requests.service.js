@@ -169,10 +169,10 @@ export async function requestInfo(ctx, id, { note }) {
 
 export async function approve(ctx, id, { note, fees, acknowledgeDues, subject, letterBody }) {
   const r = await load(ctx, id, true);
-  if (!OPEN.includes(r.status)) throw ApiError.conflict(`This request is already ${r.status}`);
+  if (!OPEN.includes(r.status)) throw ApiError.conflict('This request is already {status}', { params: { status: r.status } });
   const dues = await unitDues(ctx.societyId, r.unit);
   if (r.kind === 'noc' && dues.outstanding > 0 && !acknowledgeDues) {
-    throw new ApiError(409, 'DUES_OUTSTANDING', `${r.unitLabel} has ${money(dues.outstanding)} outstanding. Confirm to approve the NOC anyway.`, { outstanding: dues.outstanding });
+    throw new ApiError(409, 'DUES_OUTSTANDING', '{unit} has {amount} outstanding. Confirm to approve the NOC anyway.', { params: { unit: r.unitLabel, amount: money(dues.outstanding) }, details: { outstanding: dues.outstanding } });
   }
   const society = await loadSociety(ctx.societyId);
   const template = defaultLetter(r.toObject(), society);
@@ -214,7 +214,7 @@ export async function approve(ctx, id, { note, fees, acknowledgeDues, subject, l
 
 export async function reject(ctx, id, { reason }) {
   const r = await load(ctx, id, true);
-  if (!OPEN.includes(r.status)) throw ApiError.conflict(`This request is already ${r.status}`);
+  if (!OPEN.includes(r.status)) throw ApiError.conflict('This request is already {status}', { params: { status: r.status } });
   r.decidedBy = ctx.userId;
   r.decidedAt = new Date();
   r.decisionNote = reason;

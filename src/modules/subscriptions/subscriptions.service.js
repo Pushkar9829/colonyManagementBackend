@@ -414,7 +414,7 @@ async function settle(payment, actorId) {
 }
 
 async function openOrder(invoice, paidBy) {
-  if (invoice.status !== 'unpaid') throw ApiError.conflict(`Invoice is ${invoice.status}`);
+  if (invoice.status !== 'unpaid') throw ApiError.conflict('Invoice is {status}', { params: { status: invoice.status } });
   const order = await provider.createOrder({ amount: invoice.total, receipt: invoice.number, notes: { platformInvoice: String(invoice._id) } });
   await SubscriptionPayment.create({
     society: invoice.society,
@@ -498,7 +498,7 @@ export async function mockSignByToken(token, orderId) {
 // ---------- platform actions ----------
 export async function markPaid(platformUser, id, data) {
   const invoice = await loadInvoice({ _id: id });
-  if (invoice.status !== 'unpaid') throw ApiError.conflict(`Invoice is ${invoice.status}`);
+  if (invoice.status !== 'unpaid') throw ApiError.conflict('Invoice is {status}', { params: { status: invoice.status } });
   const payment = new SubscriptionPayment({
     society: invoice.society,
     invoice: invoice._id,

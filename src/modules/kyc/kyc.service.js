@@ -116,7 +116,7 @@ async function review(ctx, id, verified, reason) {
   )
     .populate(POPULATE)
     .lean();
-  if (!doc) throw ApiError.conflict(`Document not found or already ${verified ? 'verified' : 'rejected'}`);
+  if (!doc) throw ApiError.conflict(verified ? 'Document not found or already verified' : 'Document not found or already rejected');
   audit.record(ctx, verified ? 'kyc.verified' : 'kyc.rejected', 'KycDocument', doc._id, { type: doc.type, reason });
   await notifyUsers(ctx.societyId, [doc.user._id], {
     type: 'kyc',

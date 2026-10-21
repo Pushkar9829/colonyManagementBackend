@@ -233,7 +233,7 @@ export async function startVisitorParking(ctx, { slot: slotId, vehicleNumber, vi
     refresh(ctx);
     return VisitorParking.findById(doc._id).populate(VP_POPULATE).lean();
   } catch (err) {
-    if (err.code === 11000) throw ApiError.conflict(`Slot ${slot.number} is occupied`);
+    if (err.code === 11000) throw ApiError.conflict('Slot {slot} is occupied', { params: { slot: slot.number } });
     throw err;
   }
 }
@@ -394,9 +394,9 @@ export async function book(ctx, { charger: chargerId, date, startTime, endTime, 
   const s = toMinutes(startTime);
   const e = toMinutes(endTime);
   if (e <= s) throw ApiError.badRequest('End time must be after start time');
-  if (s < toMinutes(charger.openTime) || e > toMinutes(charger.closeTime)) throw ApiError.badRequest(`Charger is available ${charger.openTime}–${charger.closeTime}`);
-  if ((e - s) % charger.slotMinutes !== 0) throw ApiError.badRequest(`Book in blocks of ${charger.slotMinutes} minutes`);
-  if (e - s > charger.maxHoursPerBooking * 60) throw ApiError.badRequest(`At most ${charger.maxHoursPerBooking} hours per booking`);
+  if (s < toMinutes(charger.openTime) || e > toMinutes(charger.closeTime)) throw ApiError.badRequest('Charger is available {open}–{close}', { params: { open: charger.openTime, close: charger.closeTime } });
+  if ((e - s) % charger.slotMinutes !== 0) throw ApiError.badRequest('Book in blocks of {n} minutes', { params: { n: charger.slotMinutes } });
+  if (e - s > charger.maxHoursPerBooking * 60) throw ApiError.badRequest('At most {n} hours per booking', { params: { n: charger.maxHoursPerBooking } });
   if (localDateTime(date, endTime) <= new Date()) throw ApiError.badRequest('This time has already passed');
   if (vehicleId) {
     const [v] = await vehicles.findByIds(ctx.societyId, [vehicleId]);
@@ -435,7 +435,7 @@ async function getSession(ctx, id) {
 
 export async function startCharging(ctx, id) {
   const s = await getSession(ctx, id);
-  if (s.status !== 'booked') throw ApiError.conflict(`Booking is ${s.status}`);
+  if (s.status !== 'booked') throw ApiError.conflict('Booking is {status}', { params: { status: s.status } });
   s.status = 'charging';
   s.startedAt = new Date();
   await s.save();
@@ -446,7 +446,7 @@ export async function startCharging(ctx, id) {
 // kWh is read off the charger display; cost is an estimate for the billing team.
 export async function completeCharging(ctx, id, { kwh }) {
   const s = await getSession(ctx, id);
-  if (!LIVE.includes(s.status)) throw ApiError.conflict(`Booking is ${s.status}`);
+  if (!LIVE.includes(s.status)) throw ApiError.conflict('Booking is {status}', { params: { status: s.status } });
   const charger = await EvCharger.findById(s.charger).select('ratePerKwh').lean();
   s.status = 'completed';
   s.startedAt = s.startedAt || new Date();

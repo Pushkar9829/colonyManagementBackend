@@ -44,7 +44,7 @@ function assertCanGrant(ctx, permissions, { owner = false } = {}) {
   if (owner) throw ApiError.forbidden('Only an owner can make someone an owner');
   const held = ctx.user.platformPermissions || [];
   const missing = permissions.filter((p) => !held.includes(p));
-  if (missing.length) throw ApiError.forbidden(`You can't grant permissions you don't have: ${missing.join(', ')}`);
+  if (missing.length) throw ApiError.forbidden("You can't grant permissions you don't have: {permissions}", { params: { permissions: missing.join(', ') } });
 }
 
 export async function createRole(ctx, data) {
@@ -79,7 +79,7 @@ export async function deleteRole(ctx, id) {
   const role = await findRole(id);
   if (role.system) throw ApiError.forbidden('Built-in roles cannot be deleted');
   const assigned = await User.countDocuments({ platformRole: STAFF, platformRoleId: role._id });
-  if (assigned) throw ApiError.conflict(`${assigned} member${assigned === 1 ? ' has' : 's have'} this role. Give them another role first.`);
+  if (assigned) throw ApiError.conflict(assigned === 1 ? '{n} member has this role. Give them another role first.' : '{n} members have this role. Give them another role first.', { params: { n: assigned } });
   await PlatformRole.deleteOne({ _id: role._id });
   recordPlatform(ctx, 'role.deleted', { targetType: 'PlatformRole', targetId: id, details: { name: role.name } });
 }

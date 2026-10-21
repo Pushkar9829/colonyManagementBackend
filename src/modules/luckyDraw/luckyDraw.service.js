@@ -498,7 +498,7 @@ export async function cancel(ctx, id, { reason }) {
 function checkWindow(draw, now = new Date()) {
   if (draw.status === 'cancelled') throw ApiError.conflict('This draw was cancelled');
   if (draw.status !== 'open' || now >= new Date(draw.entryClosesAt)) throw ApiError.conflict('Entries have closed');
-  if (now < new Date(draw.entryOpensAt)) throw ApiError.conflict(`Entries open on ${fmt(draw.entryOpensAt)}`);
+  if (now < new Date(draw.entryOpensAt)) throw ApiError.conflict('Entries open on {date}', { params: { date: fmt(draw.entryOpensAt) } });
 }
 
 export async function enter(ctx, id) {

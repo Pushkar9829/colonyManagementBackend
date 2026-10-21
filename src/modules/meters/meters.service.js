@@ -150,7 +150,7 @@ export async function addReading(ctx, meterOrId, { reading, readAt, source = 'ma
     MeterReading.findOne({ meter: meter._id, readAt: { $gt: at } }).sort({ readAt: 1 }).lean(),
   ]);
   if (prev && reading < prev.reading) {
-    throw ApiError.badRequest(`Reading cannot go backwards: last reading was ${prev.reading} on ${prev.readAt.toISOString().slice(0, 10)}`);
+    throw ApiError.badRequest('Reading cannot go backwards: last reading was {reading} on {date}', { params: { reading: prev.reading, date: prev.readAt.toISOString().slice(0, 10) } });
   }
   if (next && reading > next.reading) throw ApiError.badRequest(`Reading is higher than the later reading ${next.reading}`);
 

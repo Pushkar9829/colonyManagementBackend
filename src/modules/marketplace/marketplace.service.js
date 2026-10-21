@@ -110,7 +110,7 @@ export async function setListingStatus(ctx, id, { status }) {
   const listing = await loadListing(ctx, id);
   ownOnly(ctx, listing);
   if (listing.status === 'removed') throw ApiError.conflict('This listing was removed by the moderators');
-  if (listing.status === status) throw ApiError.conflict(`Listing is already ${status}`);
+  if (listing.status === status) throw ApiError.conflict('Listing is already {status}', { params: { status } });
   listing.status = status;
   listing.soldAt = status === 'sold' ? new Date() : undefined;
   await listing.save();
@@ -192,7 +192,7 @@ export async function resolveReport(ctx, id, { action, reason }) {
 // "Is this still available?" — opens a chat with the seller with the listing attached.
 export async function contactSeller(ctx, id, { message }) {
   const listing = await loadListing(ctx, id);
-  if (listing.status !== 'active') throw ApiError.conflict(`This listing is ${listing.status}`);
+  if (listing.status !== 'active') throw ApiError.conflict('This listing is {status}', { params: { status: listing.status } });
   if (sameId(listing.seller, ctx.userId)) throw ApiError.badRequest('This is your own listing');
   return chat.contactAbout(ctx, listing.seller, message, { type: 'listing', id: listing._id, title: listing.title });
 }

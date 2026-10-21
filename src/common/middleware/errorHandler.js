@@ -14,10 +14,10 @@ export function errorHandler(err, req, res, _next) {
   if (err instanceof mongoose.Error.ValidationError) {
     error = ApiError.validation(Object.values(err.errors).map((e) => ({ field: e.path, message: e.message })));
   } else if (err instanceof mongoose.Error.CastError) {
-    error = ApiError.badRequest(`Invalid ${err.path}`);
+    error = ApiError.badRequest('Invalid {field}', { params: { field: err.path } });
   } else if (err?.code === 11000) {
     const fields = Object.keys(err.keyValue || {}).filter((f) => f !== 'society');
-    error = ApiError.conflict(`${fields.join(', ') || 'Record'} already exists`);
+    error = fields.length ? ApiError.conflict('{fields} already exists', { params: { fields: fields.join(', ') } }) : ApiError.conflict('Record already exists');
   } else if (err?.type === 'entity.parse.failed') {
     error = ApiError.badRequest('Malformed JSON body');
   } else if (!(err instanceof ApiError)) {
@@ -27,6 +27,6 @@ export function errorHandler(err, req, res, _next) {
 
   res.status(error.status).json({
     success: false,
-    error: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) },
+    error: { code: error.code, message: error.message, ...(error.template ? { template: error.template, params: error.params } : {}), ...(error.details ? { details: error.details } : {}) },
   });
 }

@@ -63,7 +63,7 @@ export async function create(ctx, data) {
     owner = await Membership.findOne({ society: ctx.societyId, unit: unit._id, role: ROLES.RESIDENT, residentType: 'owner', status: 'active' }).lean();
   }
   if (await Lease.exists({ society: ctx.societyId, unit: unit._id, status: 'active' })) {
-    throw ApiError.conflict(`${unit.label} already has an active lease. End it before adding a new one.`);
+    throw ApiError.conflict('{unit} already has an active lease. End it before adding a new one.', { params: { unit: unit.label } });
   }
 
   const agreement = await uploads.resolve(ctx, data.agreement);
@@ -79,7 +79,7 @@ export async function create(ctx, data) {
       createdBy: ctx.userId,
     });
   } catch (err) {
-    if (err.code === 11000) throw ApiError.conflict(`${unit.label} already has an active lease`);
+    if (err.code === 11000) throw ApiError.conflict('{unit} already has an active lease', { params: { unit: unit.label } });
     throw err;
   }
   audit.record(ctx, 'lease.created', 'Lease', lease._id, { unit: unit.label, startDate: data.startDate, endDate: data.endDate });

@@ -42,7 +42,7 @@ export async function buildExport(ctx) {
   const recent = await DataExport.findOne({ user: ctx.userId, createdAt: { $gt: since } }).sort({ createdAt: -1 }).lean();
   if (recent) {
     const wait = Math.ceil((recent.createdAt.getTime() + EXPORT_COOLDOWN_MS - Date.now()) / 60000);
-    throw new ApiError(429, 'EXPORT_COOLDOWN', `You downloaded your data a moment ago. Try again in ${wait} minute${wait === 1 ? '' : 's'}.`);
+    throw new ApiError(429, 'EXPORT_COOLDOWN', wait === 1 ? 'You downloaded your data a moment ago. Try again in {n} minute.' : 'You downloaded your data a moment ago. Try again in {n} minutes.', { params: { n: wait } });
   }
   await DataExport.create({ user: ctx.userId });
 

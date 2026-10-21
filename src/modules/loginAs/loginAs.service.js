@@ -128,7 +128,7 @@ async function loadTarget(actor, ctx, membershipId) {
   const society = await Society.findById(m.society).select('name active').lean();
   if (!society?.active) throw new ApiError(403, 'SOCIETY_SUSPENDED', 'This society account is suspended');
   const policy = await effectivePolicy(m.society);
-  if (!policy[actor.kind]) throw new ApiError(403, 'LOGIN_AS_DISABLED', `"Log in as" is switched off for ${LEVEL_TEXT[actor.kind]} in this society`);
+  if (!policy[actor.kind]) throw new ApiError(403, 'LOGIN_AS_DISABLED', '"Log in as" is switched off for {level} in this society', { params: { level: LEVEL_TEXT[actor.kind] } });
   return { membership: m, user, society };
 }
 

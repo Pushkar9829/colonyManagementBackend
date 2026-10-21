@@ -21,7 +21,7 @@ export async function requestLoginOtp(phone) {
   const existing = await Otp.findOne({ phone, purpose: 'login' });
   if (existing && now - existing.lastSentAt.getTime() < RESEND_COOLDOWN_MS) {
     const wait = Math.ceil((RESEND_COOLDOWN_MS - (now - existing.lastSentAt.getTime())) / 1000);
-    throw new ApiError(429, 'OTP_COOLDOWN', `Please wait ${wait}s before requesting another code`);
+    throw new ApiError(429, 'OTP_COOLDOWN', 'Please wait {seconds}s before requesting another code', { params: { seconds: wait } });
   }
   const windowFresh = !existing || now - existing.windowStartedAt.getTime() > 3600 * 1000;
   if (!windowFresh && existing.sendCount >= MAX_SENDS_PER_HOUR) {

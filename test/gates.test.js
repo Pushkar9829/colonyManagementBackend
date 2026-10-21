@@ -216,6 +216,9 @@ describe('guest passes limited to gates', () => {
     assert.equal(refused.status, 403);
     assert.equal(refused.body.error.code, 'GATE_NOT_ALLOWED');
     assert.equal(refused.body.error.message, 'This pass is only valid at Main gate');
+    // the app translates from the template + params
+    assert.equal(refused.body.error.template, 'This pass is only valid at {gates}');
+    assert.deepEqual(refused.body.error.params, { gates: 'Main gate' });
     assert.equal((await models.GuestPass.findById(pass.body.data._id).lean()).usedCount, 0);
 
     const ok = await api.post('/api/v1/visitors/passes/verify').set(h('guard')).send({ code: pass.body.data.code, gateId: s.main });
@@ -258,6 +261,7 @@ describe('daily help allowed gates', () => {
     const refused = await api.post('/api/v1/daily-help/gate-scan').set(h('guard')).send({ passcode, gateId: s.main });
     assert.equal(refused.status, 403);
     assert.equal(refused.body.error.message, 'Raju Cleaner is only valid at Service gate');
+    assert.equal(refused.body.error.template, '{name} is only valid at {gates}');
     const inside = await api.post('/api/v1/daily-help/gate-scan').set(h('guard')).send({ passcode, gateId: s.service });
     assert.equal(inside.status, 200, JSON.stringify(inside.body));
     assert.equal(inside.body.data.direction, 'in');

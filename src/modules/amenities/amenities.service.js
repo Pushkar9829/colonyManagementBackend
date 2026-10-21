@@ -108,12 +108,12 @@ export async function createBooking(ctx, data) {
   const start = toMinutes(data.startTime);
   const end = toMinutes(data.endTime);
   if (start < toMinutes(amenity.openTime) || end > toMinutes(amenity.closeTime)) {
-    throw ApiError.badRequest(`Bookings must be between ${amenity.openTime} and ${amenity.closeTime}`);
+    throw ApiError.badRequest('Bookings must be between {open} and {close}', { params: { open: amenity.openTime, close: amenity.closeTime } });
   }
   const today = localToday();
   if (data.date < today) throw ApiError.badRequest('Cannot book a past date');
   const maxDate = localDateString(Date.now() + amenity.advanceDays * 86400000);
-  if (data.date > maxDate) throw ApiError.badRequest(`Bookings open only ${amenity.advanceDays} days in advance`);
+  if (data.date > maxDate) throw ApiError.badRequest('Bookings open only {days} days in advance', { params: { days: amenity.advanceDays } });
 
   const sameDay = await Booking.find({ society: ctx.societyId, amenity: amenity._id, date: data.date, ...holding() }).lean();
   const overlapping = sameDay.filter((b) => toMinutes(b.startTime) < end && toMinutes(b.endTime) > start);
@@ -121,7 +121,7 @@ export async function createBooking(ctx, data) {
 
   const mine = sameDay.filter((b) => (ctx.unitId ? String(b.unit) === String(ctx.unitId) : String(b.user) === String(ctx.userId)));
   if (mine.length >= amenity.maxBookingsPerUnitPerDay) {
-    throw ApiError.conflict(`Limit of ${amenity.maxBookingsPerUnitPerDay} booking(s) per day reached for this amenity`);
+    throw ApiError.conflict('Limit of {n} booking(s) per day reached for this amenity', { params: { n: amenity.maxBookingsPerUnitPerDay } });
   }
 
   // The fee is per slot; a booking spanning two slots pays twice.
@@ -355,7 +355,7 @@ export async function captureByOrder({ orderId, paymentId, societyId }) {
 export async function markBookingPaid(ctx, id, { method, reference }) {
   const booking = await loadBooking(ctx, id);
   if (booking.paymentStatus !== 'pay_at_desk' && booking.paymentStatus !== 'pending') throw ApiError.conflict('Nothing is due for this booking');
-  if (!['pending', 'confirmed', 'payment_pending'].includes(booking.status)) throw ApiError.conflict(`Booking is ${booking.status}`);
+  if (!['pending', 'confirmed', 'payment_pending'].includes(booking.status)) throw ApiError.conflict('Booking is {status}', { params: { status: booking.status } });
   await AmenityPayment.updateMany({ society: ctx.societyId, booking: booking._id, status: 'created' }, { status: 'failed', notes: 'Paid at the desk instead' });
   await pay.recordOffline(ctx, {
     booking: booking._id,
@@ -384,7 +384,7 @@ export async function refundDeposit(ctx, id, { amount, reason }) {
   if (endsAt(booking) > new Date()) throw ApiError.conflict('Deposits are refunded after the booking has ended');
   const held = await pay.paidTotal(ctx.societyId, { booking: booking._id }, 'deposit');
   const toRefund = amount ?? held;
-  if (toRefund > held) throw ApiError.badRequest(`At most ${money(held)} can be refunded`);
+  if (toRefund > held) throw ApiError.badRequest('At most {amount} can be refunded', { params: { amount: money(held) } });
   if (toRefund < held && !reason) throw ApiError.badRequest('Give a reason for the deduction');
   const refunded = await pay.refund(ctx, { booking: booking._id }, 'deposit', toRefund);
   booking.depositRefunded = refunded;

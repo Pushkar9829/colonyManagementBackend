@@ -51,7 +51,7 @@ async function assertUnitCapacity(ctx, adding) {
   if (limit === null || limit === undefined) return;
   const count = await Unit.countDocuments({ society: ctx.societyId });
   if (count + adding > limit) {
-    throw new ApiError(402, 'PLAN_LIMIT', `Your plan allows ${limit} units (${count} used). Contact support to upgrade.`);
+    throw new ApiError(402, 'PLAN_LIMIT', 'Your plan allows {limit} units ({count} used). Contact support to upgrade.', { params: { limit, count } });
   }
 }
 

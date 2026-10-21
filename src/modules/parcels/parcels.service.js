@@ -107,11 +107,11 @@ const otpMatches = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buf
 export async function collect(ctx, id, { otp, collectedByType, collectedByName }) {
   const parcel = await Parcel.findOne({ _id: id, society: ctx.societyId }).select('+otp +otpAttempts');
   if (!parcel) throw ApiError.notFound('Parcel not found');
-  if (!OPEN.includes(parcel.status)) throw ApiError.conflict(`Parcel is already ${parcel.status}`);
+  if (!OPEN.includes(parcel.status)) throw ApiError.conflict('Parcel is already {status}', { params: { status: parcel.status } });
   if (parcel.otpAttempts >= MAX_OTP_ATTEMPTS) throw new ApiError(429, 'OTP_LOCKED', 'Too many wrong OTPs. Ask the resident to call the gate, or return the parcel.');
   if (!otpMatches(parcel.otp, otp)) {
     await Parcel.updateOne({ _id: parcel._id }, { $inc: { otpAttempts: 1 } });
-    throw ApiError.badRequest(`Wrong OTP (${MAX_OTP_ATTEMPTS - parcel.otpAttempts - 1} attempts left)`);
+    throw ApiError.badRequest('Wrong OTP ({n} attempts left)', { params: { n: MAX_OTP_ATTEMPTS - parcel.otpAttempts - 1 } });
   }
   const now = new Date();
   // Conditional update: two guards scanning the same parcel cannot both hand it over.

@@ -71,7 +71,7 @@ export const getById = async (ctx, id) => present(ctx, await load(ctx, id));
 export async function update(ctx, id, data) {
   const item = await load(ctx, id);
   if (!sameId(item.postedBy, ctx.userId)) throw ApiError.forbidden('Only the person who posted this can edit it');
-  if (item.status !== 'open') throw ApiError.conflict(`This post is ${item.status}`);
+  if (item.status !== 'open') throw ApiError.conflict('This post is {status}', { params: { status: item.status } });
   const { photos: photoIds, ...rest } = data;
   Object.assign(item, rest);
   if (photoIds) item.photos = [...item.photos, ...(await uploads.resolve(ctx, photoIds))].slice(0, 6);
@@ -91,7 +91,7 @@ export async function remove(ctx, id) {
 export async function claim(ctx, id, { message }) {
   const item = await load(ctx, id);
   if (sameId(item.postedBy, ctx.userId)) throw ApiError.badRequest('You posted this item');
-  if (item.status !== 'open') throw ApiError.conflict(`This post is ${item.status}`);
+  if (item.status !== 'open') throw ApiError.conflict('This post is {status}', { params: { status: item.status } });
   const existing = item.claims.find((c) => sameId(c.by, ctx.userId) && c.status === 'pending');
   if (existing) throw ApiError.conflict('You already sent a claim for this item');
   item.claims.push({ by: ctx.userId, message });
@@ -120,7 +120,7 @@ export async function withdrawClaim(ctx, id) {
 export async function decideClaim(ctx, id, claimId, accept) {
   const item = await load(ctx, id);
   if (!sameId(item.postedBy, ctx.userId)) throw ApiError.forbidden('Only the person who posted this can confirm a claim');
-  if (item.status !== 'open') throw ApiError.conflict(`This post is ${item.status}`);
+  if (item.status !== 'open') throw ApiError.conflict('This post is {status}', { params: { status: item.status } });
   const c = item.claims.id(claimId);
   if (!c || c.status !== 'pending') throw ApiError.notFound('Pending claim not found');
   const now = new Date();
@@ -162,7 +162,7 @@ export async function close(ctx, id, { status }) {
     item.status = 'open';
     item.expiresAt = addDays(new Date(), EXPIRY_DAYS);
   } else {
-    if (item.status !== 'open') throw ApiError.conflict(`This post is ${item.status}`);
+    if (item.status !== 'open') throw ApiError.conflict('This post is {status}', { params: { status: item.status } });
     item.status = status;
     if (status === 'resolved') item.resolvedAt = new Date();
     for (const c of item.claims) if (c.status === 'pending') Object.assign(c, { status: 'rejected', decidedAt: new Date() });

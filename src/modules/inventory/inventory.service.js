@@ -118,7 +118,7 @@ export async function stockOut(ctx, id, { qty, ...rest }) {
   ).lean();
   if (!item) {
     const current = await loadItem(ctx, id);
-    throw ApiError.conflict(`Only ${current.stock} ${current.unit} of ${current.name} in stock`);
+    throw ApiError.conflict('Only {stock} {unit} of {name} in stock', { params: { stock: current.stock, unit: current.unit, name: current.name } });
   }
   const movement = await record(ctx, item, { ...rest, type: 'out', qty: -q, unitCost: item.avgCost, value: -Math.round(q * item.avgCost) });
   const alerted = await checkLow(ctx, item);

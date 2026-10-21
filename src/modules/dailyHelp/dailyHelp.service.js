@@ -136,7 +136,7 @@ export async function gateScan(ctx, passcode, { occurredAt, gateId } = {}) {
     await HelpAttendance.findOneAndUpdate({ society: ctx.societyId, help: help._id, outAt: null }, { outAt: now, outGate: gate._id, outGateName: gate.name }, { sort: { inAt: -1 } });
     direction = 'out';
   } else {
-    await gateSvc.checkListed(ctx, gate, help.allowedGates, { subject: `${help.name} is` });
+    await gateSvc.checkListed(ctx, gate, help.allowedGates, { name: help.name });
     await gateSvc.checkKind(ctx, gate, 'staff');
     await HelpAttendance.create({ society: ctx.societyId, help: help._id, inAt: now, markedBy: ctx.userId, inGate: gate._id, inGateName: gate.name });
     direction = 'in';

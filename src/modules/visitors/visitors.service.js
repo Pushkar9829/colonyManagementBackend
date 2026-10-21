@@ -32,7 +32,7 @@ const POPULATE = [
 const isResident = (ctx) => ctx.role === ROLES.RESIDENT;
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const blockedError = (name, reason) => new ApiError(403, 'VISITOR_BLOCKED', `Entry refused: ${name} is on the society blocklist (${reason}). Management has been alerted.`);
+const blockedError = (name, reason) => new ApiError(403, 'VISITOR_BLOCKED', 'Entry refused: {name} is on the society blocklist ({reason}). Management has been alerted.', { params: { name, reason } });
 
 function resolveTime(occurredAt) {
   const t = eventTime(occurredAt);
@@ -184,7 +184,7 @@ async function getForAction(ctx, id) {
 // Resident decision. Approval lets the visitor in straight away.
 export async function respond(ctx, id, approve, note) {
   const visitor = await getForAction(ctx, id);
-  if (visitor.status !== 'pending') throw ApiError.conflict(`Visitor is already ${visitor.status.replace('_', ' ')}`);
+  if (visitor.status !== 'pending') throw ApiError.conflict('Visitor is already {status}', { params: { status: visitor.status.replace('_', ' ') } });
   visitor.status = approve ? 'checked_in' : 'denied';
   visitor.respondedBy = ctx.userId;
   visitor.respondedAt = new Date();
@@ -204,7 +204,7 @@ export function guardSendBack(ctx, id, note) {
 // Guard override, e.g. resident confirmed on a phone call.
 export async function guardCheckIn(ctx, id, note) {
   const visitor = await getForAction(ctx, id);
-  if (visitor.status !== 'pending') throw ApiError.conflict(`Visitor is already ${visitor.status.replace('_', ' ')}`);
+  if (visitor.status !== 'pending') throw ApiError.conflict('Visitor is already {status}', { params: { status: visitor.status.replace('_', ' ') } });
   visitor.status = 'checked_in';
   visitor.checkInAt = new Date();
   visitor.respondedBy = ctx.userId;
@@ -313,7 +313,7 @@ async function findPassForGate(ctx, code, qr) {
   const pass = await GuestPass.findOne({ _id: parsed.id, society: ctx.societyId });
   const expected = pass && sign(pass._id, pass.code);
   if (!pass || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parsed.sig))) throw ApiError.notFound('Invalid pass QR code');
-  if (pass.status !== 'active') throw ApiError.notFound(`This pass is ${pass.status}`);
+  if (pass.status !== 'active') throw ApiError.notFound('This pass is {status}', { params: { status: pass.status } });
   return pass;
 }
 
@@ -335,7 +335,7 @@ export async function verifyPass(ctx, code, { qr, occurredAt, clientKey, gateId,
   }
   const recurring = pass.kind === 'recurring';
   if (recurring && !inWeeklyWindow(now, pass.recurrence)) {
-    throw ApiError.badRequest(`Outside this pass's time window (${windowText(pass.recurrence)})`);
+    throw ApiError.badRequest("Outside this pass's time window ({window})", { params: { window: windowText(pass.recurrence) } });
   }
 
   const hit = await watchlist.screen(ctx.societyId, { name: pass.guestName, phone: pass.phone }, now);
@@ -345,10 +345,10 @@ export async function verifyPass(ctx, code, { qr, occurredAt, clientKey, gateId,
     throw blockedError(pass.guestName, hit.block.reason);
   }
   if (recurring && (await Visitor.exists({ society: ctx.societyId, pass: pass._id, status: 'checked_in' }))) {
-    throw ApiError.conflict(`${pass.guestName} is already inside on this pass`);
+    throw ApiError.conflict('{name} is already inside on this pass', { params: { name: pass.guestName } });
   }
   // Checked before the use count changes, so a refused scan does not use up the pass.
-  const listRule = await gateSvc.checkListed(ctx, gate, pass.gates, { subject: 'This pass is', override: guardApproved });
+  const listRule = await gateSvc.checkListed(ctx, gate, pass.gates, { override: guardApproved });
   const kindRule = await gateSvc.checkKind(ctx, gate, gateKind(pass.purpose), { override: guardApproved });
   const gateOverride = (listRule || kindRule)?.override;
 

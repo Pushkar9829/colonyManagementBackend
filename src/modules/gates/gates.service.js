@@ -63,7 +63,7 @@ export async function currentPost(ctx) {
 export async function setPost(ctx, gateId, source = 'console') {
   const gate = await Gate.findOne({ _id: gateId, society: ctx.societyId }).lean();
   if (!gate) throw ApiError.badRequest('Unknown gate');
-  if (!gate.active) throw ApiError.badRequest(`${gate.name} is closed`);
+  if (!gate.active) throw ApiError.badRequest('{gate} is closed', { params: { gate: gate.name } });
   const since = new Date();
   await GatePost.updateOne({ society: ctx.societyId, guard: ctx.userId }, { gate: gate._id, gateName: gate.name, since, source }, { upsert: true });
   return { gate, since, source };
@@ -86,14 +86,14 @@ export async function resolveGate(ctx, ref, { freeText = false, includeInactive 
     if (isId(value)) {
       const gate = await Gate.findOne({ _id: value, society: ctx.societyId }).lean();
       if (!gate) throw ApiError.badRequest('Unknown gate');
-      if (!gate.active && !includeInactive) throw ApiError.badRequest(`${gate.name} is closed — pick another gate`);
+      if (!gate.active && !includeInactive) throw ApiError.badRequest('{gate} is closed — pick another gate', { params: { gate: gate.name } });
       return gate;
     }
     await ensureDefaultGate(ctx.societyId);
     const gate = await Gate.findOne({ society: ctx.societyId, $or: [{ nameKey: normalizeGateName(value) }, { code: value.toUpperCase() }] }).lean();
     if (gate) return gate;
     if (freeText) return { _id: undefined, name: value };
-    throw ApiError.badRequest(`Unknown gate "${value}"`);
+    throw ApiError.badRequest('Unknown gate "{gate}"', { params: { gate: value } });
   }
   if (ctx.role === ROLES.GUARD) {
     const post = await currentPost(ctx);
@@ -111,7 +111,8 @@ export async function assertGateIds(societyId, ids = []) {
   return unique;
 }
 
-const refuse = (message) => new ApiError(403, 'GATE_NOT_ALLOWED', message);
+const refuse = ({ template, params }) => new ApiError(403, 'GATE_NOT_ALLOWED', template, { params });
+const filled = ({ template, params }) => template.replace(/\{(\w+)\}/g, (_, k) => params[k]);
 
 async function alternatives(societyId, kind, exclude) {
   const flag = KIND_FLAG[kind];
@@ -128,23 +129,25 @@ export async function checkKind(ctx, gate, kind, { withVehicle = false, override
   let message = null;
   if (!gate[KIND_FLAG[kind]] || (kind === 'vehicles' && gate.isPedestrianOnly)) {
     const alt = await alternatives(ctx.societyId, kind, gate._id);
-    message = `${gate.name} does not take ${KIND_WORDS[kind]}${alt.length ? ` — use ${joinOr(alt)}` : ''}`;
+    message = { template: `{gate} does not take ${KIND_WORDS[kind]}${alt.length ? ' — use {alt}' : ''}`, params: { gate: gate.name, alt: joinOr(alt) } };
   } else if (withVehicle && gate.isPedestrianOnly) {
     const alt = await alternatives(ctx.societyId, 'vehicles', gate._id);
-    message = `${gate.name} is for people on foot only${alt.length ? ` — vehicles use ${joinOr(alt)}` : ''}`;
+    message = { template: `{gate} is for people on foot only${alt.length ? ' — vehicles use {alt}' : ''}`, params: { gate: gate.name, alt: joinOr(alt) } };
   }
   if (!message) return null;
-  if (override) return { override: overrideRecord(ctx, message) };
+  if (override) return { override: overrideRecord(ctx, filled(message)) };
   throw refuse(message);
 }
 
 // A pass / helper limited to some gates. Empty list = any gate.
-export async function checkListed(ctx, gate, allowedIds, { subject = 'This pass is', override = false } = {}) {
+//   name: whose permission it is (a helper's name); without it the message talks about "this pass".
+export async function checkListed(ctx, gate, allowedIds, { name, override = false } = {}) {
   if (!allowedIds?.length || !gate?._id) return null;
   if (allowedIds.some((id) => String(id) === String(gate._id))) return null;
   const gates = await Gate.find({ society: ctx.societyId, _id: { $in: allowedIds } }).sort(SORT).select('name').lean();
-  const message = `${subject} only valid at ${joinOr(gates.map((g) => g.name)) || 'another gate'}`;
-  if (override) return { override: overrideRecord(ctx, message) };
+  const names = joinOr(gates.map((g) => g.name));
+  const message = { template: `${name ? '{name} is' : 'This pass is'} only valid at ${names ? '{gates}' : 'another gate'}`, params: { name, gates: names } };
+  if (override) return { override: overrideRecord(ctx, filled(message)) };
   throw refuse(message);
 }
 

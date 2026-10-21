@@ -170,9 +170,9 @@ export const markCharged = (societyId, adjustmentIds, billByAdjustment) =>
 export async function requestWaiver(ctx, { bill: billId, amount, reason }) {
   const bill = await Bill.findOne({ _id: billId, society: ctx.societyId }).lean();
   if (!bill) throw ApiError.notFound('Bill not found');
-  if (!OPEN.includes(bill.status)) throw ApiError.conflict(`Bill is ${bill.status}`);
+  if (!OPEN.includes(bill.status)) throw ApiError.conflict('Bill is {status}', { params: { status: bill.status } });
   const balance = bill.total - bill.paid;
-  if (amount > balance) throw ApiError.badRequest(`Waiver cannot exceed the bill balance (${money(balance)})`);
+  if (amount > balance) throw ApiError.badRequest('Waiver cannot exceed the bill balance ({amount})', { params: { amount: money(balance) } });
   if (await Adjustment.exists({ society: ctx.societyId, bill: bill._id, type: 'waiver', status: 'pending' })) {
     throw ApiError.conflict('A waiver for this bill is already awaiting approval');
   }
@@ -195,7 +195,7 @@ export async function requestWaiver(ctx, { bill: billId, amount, reason }) {
 export async function decideWaiver(ctx, id, decision, note, { selfApprove = false } = {}) {
   const adj = await Adjustment.findOne({ _id: id, society: ctx.societyId, type: 'waiver' }).lean();
   if (!adj) throw ApiError.notFound('Waiver not found');
-  if (adj.status !== 'pending') throw ApiError.conflict(`Waiver is already ${adj.status}`);
+  if (adj.status !== 'pending') throw ApiError.conflict('Waiver is already {status}', { params: { status: adj.status } });
   if (!selfApprove && String(adj.requestedBy) === String(ctx.userId)) throw ApiError.forbidden('The person who requested a waiver cannot approve it');
 
   const status = decision === 'approve' ? 'approved' : 'rejected';

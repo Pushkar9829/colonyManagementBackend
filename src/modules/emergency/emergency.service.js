@@ -105,7 +105,7 @@ export async function raiseChildExit(ctx, childId, { gateId, gate: gateName, not
   const gate = g.name;
   const child = await Child.findOne({ _id: childId, society: ctx.societyId }).populate('unit', 'label').lean();
   if (!child) throw ApiError.notFound('Child not found');
-  if (!child.alertOnExit) throw ApiError.badRequest(`${child.name}'s parents have not asked for exit alerts`);
+  if (!child.alertOnExit) throw ApiError.badRequest("{name}'s parents have not asked for exit alerts", { params: { name: child.name } });
   const recent = await ChildAlert.findOne({ society: ctx.societyId, child: child._id, status: 'open', createdAt: { $gte: new Date(Date.now() - 2 * 60000) } }).lean();
   if (recent) throw ApiError.conflict('An alert for this child was raised a moment ago and is waiting for the parent');
   const alert = await ChildAlert.create({ society: ctx.societyId, child: child._id, unit: child.unit._id, gate, gateId: g._id, note, raisedBy: ctx.userId });

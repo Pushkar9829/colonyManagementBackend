@@ -58,7 +58,7 @@ export async function myBalances(ctx, { year, employee: employeeId }) {
 async function assertAvailable(ctx, emp, { type, year, days }, excludePending = 0) {
   if (!PAID_LEAVE_TYPES.includes(type)) return;
   const row = (await balances(ctx, emp._id, year)).find((b) => b.type === type);
-  if (days > row.available + excludePending) throw ApiError.conflict(`Only ${row.available + excludePending} ${type} leave day(s) left for ${year}`);
+  if (days > row.available + excludePending) throw ApiError.conflict('Only {n} {type} leave day(s) left for {year}', { params: { n: row.available + excludePending, type, year } });
 }
 
 export async function apply(ctx, { employee: employeeId, ...data }) {
@@ -66,7 +66,7 @@ export async function apply(ctx, { employee: employeeId, ...data }) {
   const days = leaveDays(data);
   const year = Number(data.from.slice(0, 4));
   const clash = await LeaveRequest.findOne({ society: ctx.societyId, employee: emp._id, status: { $in: ['pending', 'approved'] }, from: { $lte: data.to }, to: { $gte: data.from } }).lean();
-  if (clash) throw ApiError.conflict(`Overlaps an existing ${clash.status} leave (${clash.from} to ${clash.to})`);
+  if (clash) throw ApiError.conflict('Overlaps an existing {status} leave ({from} to {to})', { params: { status: clash.status, from: clash.from, to: clash.to } });
   await assertAvailable(ctx, emp, { type: data.type, year, days });
   const leave = await LeaveRequest.create({ ...data, days, year, society: ctx.societyId, employee: emp._id, user: emp.user._id || emp.user });
   // A manager filing on someone's behalf approves it in the same step.
@@ -100,7 +100,7 @@ async function writeAttendance(ctx, leave) {
 export async function decide(ctx, id, { approved, note }) {
   const leave = await LeaveRequest.findOne({ _id: id, society: ctx.societyId });
   if (!leave) throw ApiError.notFound('Leave request not found');
-  if (leave.status !== 'pending') throw ApiError.conflict(`This request is already ${leave.status}`);
+  if (leave.status !== 'pending') throw ApiError.conflict('This request is already {status}', { params: { status: leave.status } });
   if (approved) {
     const emp = await Employee.findById(leave.employee).lean();
     await assertAvailable(ctx, emp, leave, leave.days);
@@ -123,7 +123,7 @@ export async function cancel(ctx, id) {
   const leave = await LeaveRequest.findOne({ _id: id, society: ctx.societyId });
   const own = leave && String(leave.user) === String(ctx.userId);
   if (!leave || (!own && !isManagerRole(ctx.role))) throw ApiError.notFound('Leave request not found');
-  if (!['pending', 'approved'].includes(leave.status)) throw ApiError.conflict(`This request is already ${leave.status}`);
+  if (!['pending', 'approved'].includes(leave.status)) throw ApiError.conflict('This request is already {status}', { params: { status: leave.status } });
   if (leave.status === 'approved' && !isManagerRole(ctx.role) && leave.from <= today()) throw ApiError.conflict('Leave that has started can only be cancelled by a manager');
   const wasApproved = leave.status === 'approved';
   leave.status = 'cancelled';

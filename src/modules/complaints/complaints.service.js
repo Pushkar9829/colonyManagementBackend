@@ -138,7 +138,7 @@ const STAFF_TRANSITIONS = {
 export async function changeStatus(ctx, id, { status, note, beforePhotos, afterPhotos }) {
   const complaint = await load(ctx, id);
   if (!STAFF_TRANSITIONS[complaint.status].includes(status)) {
-    throw ApiError.conflict(`Cannot move from ${complaint.status} to ${status}`);
+    throw ApiError.conflict('Cannot move from {from} to {to}', { params: { from: complaint.status, to: status } });
   }
   if (isStaff(ctx) && status === 'closed') throw ApiError.forbidden('Only managers can close complaints');
   const before = await uploads.resolve(ctx, beforePhotos);

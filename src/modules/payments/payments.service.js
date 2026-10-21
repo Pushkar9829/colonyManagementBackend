@@ -36,7 +36,7 @@ async function openBill(ctx, billId) {
   if (isResident(ctx)) filter.unit = ctx.unitId;
   const bill = await Bill.findOne(filter).lean();
   if (!bill) throw ApiError.notFound('Bill not found');
-  if (!OPEN.includes(bill.status)) throw ApiError.conflict(`Bill is ${bill.status}`);
+  if (!OPEN.includes(bill.status)) throw ApiError.conflict('Bill is {status}', { params: { status: bill.status } });
   return bill;
 }
 
@@ -303,7 +303,7 @@ export async function emailReceiptToHousehold(societyId, paymentId) {
 export async function bounce(ctx, id, { reason, charge = true }) {
   const payment = await Payment.findOne({ _id: id, society: ctx.societyId });
   if (!payment) throw ApiError.notFound('Payment not found');
-  if (payment.status !== 'success') throw ApiError.conflict(`Payment is ${payment.status}`);
+  if (payment.status !== 'success') throw ApiError.conflict('Payment is {status}', { params: { status: payment.status } });
   if (payment.method !== 'cheque') throw ApiError.badRequest('Only cheque payments can bounce');
   const settings = await financeSettings.forSociety(ctx.societyId);
   const applied = payment.appliedAmount ?? (payment.bill ? payment.amount : 0);

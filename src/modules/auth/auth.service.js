@@ -254,7 +254,7 @@ async function requestHome(userId, userName, { societyCode, unit: unitId, reside
   const unit = await Unit.findOne({ _id: unitId, society: society._id }).lean();
   if (!unit) throw ApiError.badRequest('Unit not found in this society');
   const existing = await Membership.findOne({ user: userId, society: society._id, unit: unit._id }).lean();
-  if (existing && ['active', 'pending'].includes(existing.status)) throw ApiError.conflict(`You already ${existing.status === 'active' ? 'belong to' : 'requested'} ${unit.label}`);
+  if (existing && ['active', 'pending'].includes(existing.status)) throw ApiError.conflict(existing.status === 'active' ? 'You already belong to {unit}' : 'You already requested {unit}', { params: { unit: unit.label } });
   if (existing) await Membership.deleteOne({ _id: existing._id }); // re-apply after a rejection
   const membership = await Membership.create({ user: userId, society: society._id, role: ROLES.RESIDENT, unit: unit._id, residentType, status: 'pending' });
   await notifyRoles(society._id, [ROLES.ADMIN], {

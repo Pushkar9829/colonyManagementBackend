@@ -107,7 +107,7 @@ async function geofenceCheck(settings, { lat, lng, accuracy }) {
   const distanceM = distanceMetres(g.lat, g.lng, lat, lng);
   // GPS on phones drifts; give the reported accuracy some benefit, capped so a bad fix can't open the fence.
   const allowance = g.radiusM + Math.min(accuracy || 0, 50);
-  if (distanceM > allowance) throw new ApiError(403, 'OUTSIDE_GEOFENCE', `You are ${distanceM} m from the society; check-in is allowed within ${g.radiusM} m`);
+  if (distanceM > allowance) throw new ApiError(403, 'OUTSIDE_GEOFENCE', 'You are {distance} m from the society; check-in is allowed within {radius} m', { params: { distance: distanceM, radius: g.radiusM } });
   return { distanceM };
 }
 

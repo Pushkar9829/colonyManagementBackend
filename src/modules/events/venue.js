@@ -44,7 +44,7 @@ export async function reserveVenue(ctx, event) {
   const amenity = await Amenity.findOne({ _id: event.amenity, society: ctx.societyId }).lean();
   if (!amenity) throw ApiError.badRequest('Amenity not found');
   const slots = venueSlots(event, amenity);
-  if (!slots.length) throw ApiError.badRequest(`${amenity.name} is closed at the event time (${amenity.openTime}–${amenity.closeTime})`);
+  if (!slots.length) throw ApiError.badRequest('{name} is closed at the event time ({open}–{close})', { params: { name: amenity.name, open: amenity.openTime, close: amenity.closeTime } });
 
   for (const slot of slots) {
     // eslint-disable-next-line no-await-in-loop
@@ -53,7 +53,7 @@ export async function reserveVenue(ctx, event) {
       .lean();
     const clash = taken.filter((b) => toMinutes(b.startTime) < toMinutes(slot.endTime) && toMinutes(b.endTime) > toMinutes(slot.startTime));
     if (clash.length >= (amenity.capacity || 1)) {
-      throw ApiError.conflict(`${amenity.name} is already booked on ${slot.date} between ${clash[0].startTime} and ${clash[0].endTime}`);
+      throw ApiError.conflict('{name} is already booked on {date} between {start} and {end}', { params: { name: amenity.name, date: slot.date, start: clash[0].startTime, end: clash[0].endTime } });
     }
   }
   await releaseVenue(ctx, event._id);
