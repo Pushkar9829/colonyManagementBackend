@@ -124,7 +124,7 @@ async function loadRun(ctx, id) {
 
 export async function completeRun(ctx, id, { items, photos: photoIds, remarks }) {
   const run = await loadRun(ctx, id);
-  if (!['pending', 'rejected'].includes(run.status)) throw ApiError.conflict(`This checklist is ${run.status}`);
+  if (!['pending', 'rejected'].includes(run.status)) throw ApiError.conflict('This checklist is {status}', { params: { status: run.status } });
   if (run.date > today()) throw ApiError.conflict('This checklist is for a later day');
   const template = await Checklist.findById(run.checklist).select('requirePhoto').lean();
   const photos = await uploads.resolve(ctx, photoIds);

@@ -55,7 +55,7 @@ function applyMapping(headers, mapping = {}) {
     if (typeof v === 'number' || /^\d+$/.test(String(v))) idx = Number(v);
     else if (/^[A-Z]{1,2}$/.test(String(v))) idx = [...String(v)].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0) - 1;
     else idx = h.indexOf(norm(v));
-    if (idx < 0 || idx >= headers.length) throw ApiError.badRequest(`Column "${v}" for ${field} not found in the statement`);
+    if (idx < 0 || idx >= headers.length) throw ApiError.badRequest('Column "{column}" for {field} not found in the statement', { params: { column: v, field } });
     out[field] = idx;
   }
   return out;

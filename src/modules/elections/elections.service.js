@@ -166,7 +166,7 @@ export async function transition(ctx, id, action, { note } = {}) {
 
 async function applyTransition(ctx, election, action, note) {
   const t = TRANSITIONS[action];
-  if (!t.from.includes(election.status)) throw ApiError.conflict(`Cannot ${action.replace('-', ' ')} while the election is ${election.status}`);
+  if (!t.from.includes(election.status)) throw ApiError.conflict('Cannot {action} while the election is {status}', { params: { action: action.replace('-', ' '), status: election.status } });
 
   if (action === 'open-nominations' && !election.positions.length) throw ApiError.badRequest('Add at least one position');
   if (action === 'close-nominations') {
@@ -175,11 +175,11 @@ async function applyTransition(ctx, election, action, note) {
   }
   if (action === 'open-voting') {
     const pending = await Nomination.countDocuments({ election: election._id, status: 'accepted' });
-    if (pending) throw ApiError.conflict(`${pending} nomination(s) still await scrutiny`);
+    if (pending) throw ApiError.conflict('{count} nomination(s) still await scrutiny', { params: { count: pending } });
     const approved = await Nomination.aggregate([{ $match: { election: election._id, status: 'approved' } }, { $group: { _id: '$position', n: { $sum: 1 } } }]);
     const have = new Set(approved.map((a) => String(a._id)));
     const empty = election.positions.filter((p) => !have.has(String(p._id)));
-    if (empty.length) throw ApiError.conflict(`No approved candidates for: ${empty.map((p) => p.title).join(', ')}`);
+    if (empty.length) throw ApiError.conflict('No approved candidates for: {posts}', { params: { posts: empty.map((p) => p.title).join(', ') } });
     election.eligibleCount = await countEligible(election.society, election.eligibility);
   }
   if (action === 'close') {
@@ -279,7 +279,7 @@ export async function resolveTie(ctx, id, { position, winners, note }) {
   const open = r.seats - r.winners.length;
   const tied = new Set(r.tiedCandidates.map(String));
   const chosen = [...new Set(winners.map(String))];
-  if (chosen.length !== open || chosen.some((w) => !tied.has(w))) throw ApiError.badRequest(`Choose exactly ${open} of the tied candidates`);
+  if (chosen.length !== open || chosen.some((w) => !tied.has(w))) throw ApiError.badRequest('Choose exactly {count} of the tied candidates', { params: { count: open } });
   r.winners.push(...chosen);
   r.candidates.forEach((c) => { if (chosen.includes(String(c.nomination))) c.elected = true; });
   r.tieResolution = note;
@@ -372,7 +372,7 @@ export async function nominate(ctx, id, { position, candidate, statement }) {
       acceptedAt: self ? new Date() : undefined,
     });
   } catch (err) {
-    if (err?.code === 11000) throw ApiError.conflict(`${m.user.name} is already nominated for ${pos.title}`);
+    if (err?.code === 11000) throw ApiError.conflict('{name} is already nominated for {post}', { params: { name: m.user.name, post: pos.title } });
     throw err;
   }
   if (!self) {
@@ -472,13 +472,13 @@ function checkSelections(election, approved, selections) {
   for (const s of selections) {
     const pos = election.positions.id(s.position);
     if (!pos) throw ApiError.badRequest('Unknown position on the ballot');
-    if (byPosition.has(String(pos._id))) throw ApiError.badRequest(`${pos.title} appears twice on the ballot`);
+    if (byPosition.has(String(pos._id))) throw ApiError.badRequest('{post} appears twice on the ballot', { params: { post: pos.title } });
     const picks = [...new Set(s.nominations.map(String))];
-    if (picks.length !== s.nominations.length) throw ApiError.badRequest(`Each candidate can get only one vote for ${pos.title}`);
-    if (picks.length > pos.seats) throw ApiError.badRequest(`Choose at most ${pos.seats} candidate(s) for ${pos.title}`);
+    if (picks.length !== s.nominations.length) throw ApiError.badRequest('Each candidate can get only one vote for {post}', { params: { post: pos.title } });
+    if (picks.length > pos.seats) throw ApiError.badRequest('Choose at most {seats} candidate(s) for {post}', { params: { seats: pos.seats, post: pos.title } });
     for (const nid of picks) {
       const n = approved.get(nid);
-      if (!n || String(n.position) !== String(pos._id)) throw ApiError.badRequest(`Invalid candidate for ${pos.title}`);
+      if (!n || String(n.position) !== String(pos._id)) throw ApiError.badRequest('Invalid candidate for {post}', { params: { post: pos.title } });
     }
     byPosition.set(String(pos._id), { position: pos._id, nominations: picks });
   }

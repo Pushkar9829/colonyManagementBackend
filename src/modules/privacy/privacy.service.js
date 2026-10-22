@@ -56,7 +56,7 @@ async function soleAdminSocieties(userId, societyIds) {
 async function assertNotSoleAdmin(userId, societyIds) {
   const sole = await soleAdminSocieties(userId, societyIds);
   if (sole.length) {
-    throw ApiError.conflict(`${sole.map((s) => s.name).join(', ')} would be left without an admin. Make someone else an admin first, then approve this request.`);
+    throw ApiError.conflict('{names} would be left without an admin. Make someone else an admin first, then approve this request.', { params: { names: sole.map((s) => s.name).join(', ') } });
   }
 }
 
@@ -133,7 +133,7 @@ export async function list(ctx, { status }, { page, limit, skip }) {
 async function getForDecision(ctx, id) {
   const r = await DeletionRequest.findOne({ _id: id, ...scope(ctx) });
   if (!r) throw ApiError.notFound('Request not found');
-  if (r.status !== 'pending') throw ApiError.badRequest(`This request is already ${r.status}`);
+  if (r.status !== 'pending') throw ApiError.badRequest('This request is already {status}', { params: { status: r.status } });
   if (sameId(r.user, ctx.userId)) throw ApiError.forbidden('Another admin must decide on your own request');
   return r;
 }

@@ -49,7 +49,7 @@ export async function createAccount(ctx, data) {
   if (!type) throw ApiError.badRequest('Account code must start with 1-5 (asset, liability, fund, income, expense)');
   if (data.parent) {
     const parent = await Account.findOne({ society: ctx.societyId, code: data.parent }).lean();
-    if (!parent) throw ApiError.badRequest(`Parent account ${data.parent} not found`);
+    if (!parent) throw ApiError.badRequest('Parent account {code} not found', { params: { code: data.parent } });
     if (parent.type !== type) throw ApiError.badRequest('A sub-account must be of the same type as its parent');
   }
   if ((data.isBank || data.isCash) && type !== 'asset') throw ApiError.badRequest('Bank and cash accounts must be asset accounts (1xxx)');
@@ -71,7 +71,7 @@ export async function createAccount(ctx, data) {
     refresh(ctx.societyId);
     return account.toObject();
   } catch (err) {
-    if (err.code === 11000) throw ApiError.conflict(`Account code ${data.code} is already used`);
+    if (err.code === 11000) throw ApiError.conflict('Account code {code} is already used', { params: { code: data.code } });
     throw err;
   }
 }
@@ -180,9 +180,9 @@ export async function postOpeningBalances(ctx, { date, lines }) {
   let net = 0; // debit - credit
   for (const l of lines) {
     const account = accounts.get(l.code);
-    if (!account) throw ApiError.badRequest(`Unknown account ${l.code}`);
+    if (!account) throw ApiError.badRequest('Unknown account {code}', { params: { code: l.code } });
     if (l.code === CODES.OPENING_BALANCE_EQUITY) throw ApiError.badRequest('3900 is balanced automatically');
-    if (!['asset', 'liability', 'equity'].includes(account.type)) throw ApiError.badRequest(`Opening balances are for balance-sheet accounts; ${l.code} is ${account.type}`);
+    if (!['asset', 'liability', 'equity'].includes(account.type)) throw ApiError.badRequest('Opening balances are for balance-sheet accounts; {code} is {type}', { params: { code: l.code, type: account.type } });
     if (!l.debit && !l.credit) continue;
     out.push({ accountCode: l.code, debit: l.debit || 0, credit: l.credit || 0 });
     net += (l.debit || 0) - (l.credit || 0);

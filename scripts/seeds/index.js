@@ -4,6 +4,7 @@
 //   s.membership(email) -> membership doc, s.unit(label) -> unit doc
 // Add one import line and one array entry per module.
 // ---- seed imports (add below this line) ----
+import templatesSeed from './templates.js';
 import billingWhitelabelSeed from './billingWhitelabel.js';
 import adsSeed from './ads.js';
 import membersSeed from './members.js';
@@ -22,6 +23,7 @@ import luckyDrawSeed from './luckyDraw.js';
 export const SEEDS = [
   // ---- seed entries (add below this line) ----
   billingWhitelabelSeed,
+  templatesSeed, // after billingWhitelabel (SmartNest reseller and its societies)
   adsSeed,
   platformTeamSeed,
   securitySeed,

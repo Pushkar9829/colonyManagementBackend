@@ -202,7 +202,7 @@ export async function update(ctx, id, data) {
   };
   checkTimes(next);
   if (data.capacity && data.capacity < event.goingCount) {
-    throw ApiError.conflict(`Capacity can't be lower than the ${event.goingCount} people already confirmed`);
+    throw ApiError.conflict("Capacity can't be lower than the {count} people already confirmed", { params: { count: event.goingCount } });
   }
   if (data.ticketPrice !== undefined && data.ticketPrice !== event.ticketPrice) {
     if (await EventTicket.exists({ society: ctx.societyId, event: event._id, status: 'success' })) {

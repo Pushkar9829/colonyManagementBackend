@@ -186,7 +186,7 @@ async function deliver(schedule, now) {
 export const listSchedules = (ctx) => ReportSchedule.find({ society: ctx.societyId }).sort({ frequency: 1 }).lean();
 
 export async function createSchedule(ctx, data) {
-  if (await ReportSchedule.exists({ society: ctx.societyId, frequency: data.frequency })) throw ApiError.conflict(`A ${data.frequency} summary is already set up`);
+  if (await ReportSchedule.exists({ society: ctx.societyId, frequency: data.frequency })) throw ApiError.conflict('A {frequency} summary is already set up', { params: { frequency: data.frequency } });
   const doc = await ReportSchedule.create({ ...data, society: ctx.societyId, createdBy: ctx.userId, nextRunAt: nextRunAt(data.frequency) });
   audit.record(ctx, 'report.schedule_created', 'ReportSchedule', doc._id, data);
   return doc.toObject();

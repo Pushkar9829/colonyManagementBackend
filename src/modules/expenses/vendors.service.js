@@ -26,7 +26,7 @@ function present(ctx, v, { full = false } = {}) {
 export async function loadVendor(ctx, id, { activeOnly = false } = {}) {
   const vendor = await Vendor.findOne({ _id: id, society: ctx.societyId }).lean();
   if (!vendor) throw ApiError.notFound('Vendor not found');
-  if (activeOnly && !vendor.active) throw ApiError.badRequest(`${vendor.name} is inactive`);
+  if (activeOnly && !vendor.active) throw ApiError.badRequest('{name} is inactive', { params: { name: vendor.name } });
   return vendor;
 }
 
@@ -35,10 +35,10 @@ export async function assertExpenseAccounts(ctx, codes) {
   const accounts = await accountsByCode(ctx.societyId);
   for (const code of new Set(codes)) {
     const a = accounts.get(code);
-    if (!a) throw ApiError.badRequest(`Unknown account ${code}`);
-    if (!a.active) throw ApiError.badRequest(`Account ${code} ${a.name} is inactive`);
+    if (!a) throw ApiError.badRequest('Unknown account {code}', { params: { code } });
+    if (!a.active) throw ApiError.badRequest('Account {code} {name} is inactive', { params: { code, name: a.name } });
     if (!(a.type === 'expense' || (a.type === 'asset' && !a.isBank && !a.isCash && a.code !== '1100'))) {
-      throw ApiError.badRequest(`${code} ${a.name} is not an expense account`);
+      throw ApiError.badRequest('{code} {name} is not an expense account', { params: { code, name: a.name } });
     }
   }
   return accounts;
@@ -73,7 +73,7 @@ export async function getById(ctx, id) {
 export async function create(ctx, data) {
   if (data.defaultAccount) await assertExpenseAccounts(ctx, [data.defaultAccount]);
   if (await Vendor.exists({ society: ctx.societyId, name: new RegExp(`^${escapeRegex(data.name)}$`, 'i') })) {
-    throw ApiError.conflict(`A vendor named "${data.name}" already exists`);
+    throw ApiError.conflict('A vendor named "{name}" already exists', { params: { name: data.name } });
   }
   const vendor = await Vendor.create({ ...data, society: ctx.societyId, createdBy: ctx.userId });
   audit.record(ctx, 'vendor.created', 'Vendor', vendor._id, { name: vendor.name });
@@ -87,7 +87,7 @@ export async function update(ctx, id, data) {
   if (data.defaultAccount) await assertExpenseAccounts(ctx, [data.defaultAccount]);
   if (data.name && data.name.toLowerCase() !== vendor.name.toLowerCase()
     && (await Vendor.exists({ society: ctx.societyId, _id: { $ne: vendor._id }, name: new RegExp(`^${escapeRegex(data.name)}$`, 'i') }))) {
-    throw ApiError.conflict(`A vendor named "${data.name}" already exists`);
+    throw ApiError.conflict('A vendor named "{name}" already exists', { params: { name: data.name } });
   }
   vendor.set(data);
   await vendor.save();

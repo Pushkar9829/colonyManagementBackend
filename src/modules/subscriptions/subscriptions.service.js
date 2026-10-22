@@ -109,7 +109,7 @@ async function assertCycleOffered(societyId, cycle) {
   const price = await priceFor(society?.plan?.name || 'free');
   // Free and trial societies may pick any cycle for later; a paid plan without a one-time price can't use it.
   if (cycle === 'one_time' && !price.oneTimePrice && (price.perUnitMonthly || price.flatMonthly)) {
-    throw ApiError.badRequest(`The ${society.plan.name} plan has no one-time price. Choose monthly, quarterly or yearly.`);
+    throw ApiError.badRequest('The {plan} plan has no one-time price. Choose monthly, quarterly or yearly.', { params: { plan: society.plan.name } });
   }
 }
 

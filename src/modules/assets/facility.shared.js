@@ -99,6 +99,6 @@ export const canWorkOn = (ctx, doc) =>
 export async function assertMember(ctx, userId, roles = [ROLES.STAFF, ROLES.FACILITY_MANAGER, ROLES.GUARD, ROLES.ADMIN], what = 'Assignee') {
   if (!userId) return null;
   const m = await Membership.findOne({ user: userId, society: ctx.societyId, role: { $in: roles }, status: 'active' }).select('user role').lean();
-  if (!m) throw ApiError.badRequest(`${what} must be an active ${roles.map((r) => r.replace('_', ' ')).join(' / ')} of this society`);
+  if (!m) throw ApiError.badRequest('{what} must be an active {roles} of this society', { params: { what, roles: roles.map((r) => r.replace('_', ' ')).join(' / ') } });
   return m;
 }

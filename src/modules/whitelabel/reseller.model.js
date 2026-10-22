@@ -14,6 +14,12 @@ const resellerSchema = new mongoose.Schema(
       supportPhone: { type: String, trim: true },
       customDomain: { type: String, trim: true, lowercase: true }, // host name only, e.g. app.smartnest.in
     },
+    // App templates (modules/appearance): the partner's colonies may only use `allowed` (empty = no limit),
+    // and with brandOverridesTemplate the partner colour replaces each template's brand palette.
+    templates: {
+      allowed: { type: [String], default: [] },
+      brandOverridesTemplate: { type: Boolean, default: false },
+    },
     status: { type: String, enum: ['active', 'suspended'], default: 'active' },
     contact: {
       name: { type: String, trim: true },

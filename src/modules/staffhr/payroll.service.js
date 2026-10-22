@@ -150,7 +150,7 @@ async function syncTotals(runId) {
 
 export async function createRun(ctx, { period }) {
   if (period > today().slice(0, 7)) throw ApiError.badRequest('Payroll cannot be run for a future month');
-  if (await PayrollRun.exists({ society: ctx.societyId, period })) throw ApiError.conflict(`Payroll for ${period} already exists`);
+  if (await PayrollRun.exists({ society: ctx.societyId, period })) throw ApiError.conflict('Payroll for {period} already exists', { params: { period } });
   const run = await PayrollRun.create({ society: ctx.societyId, period, createdBy: ctx.userId });
   await recomputeDraft(ctx, run);
   audit.record(ctx, 'payroll.run_created', 'PayrollRun', run._id, { period });
@@ -205,7 +205,7 @@ export async function getRun(ctx, id) {
 
 export async function approve(ctx, id) {
   const run = await loadRun(ctx, id);
-  if (run.status !== 'draft') throw ApiError.conflict(`Payroll is already ${run.status}`);
+  if (run.status !== 'draft') throw ApiError.conflict('Payroll is already {status}', { params: { status: run.status } });
   await recomputeDraft(ctx, run); // pick up the latest attendance and leave before freezing
   const payslips = await Payslip.find({ run: run._id }).lean();
   if (!payslips.length) throw ApiError.conflict('No employees in this payroll');

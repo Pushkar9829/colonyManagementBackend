@@ -120,7 +120,7 @@ export async function update(ctx, id, data) {
 
 export async function changeStatus(ctx, id, { status, note }) {
   const asset = await load(ctx, id);
-  if (asset.status === status) throw ApiError.conflict(`Asset is already ${status.replace('_', ' ')}`);
+  if (asset.status === status) throw ApiError.conflict('Asset is already {status}', { params: { status: status.replace('_', ' ') } });
   const from = asset.status;
   asset.status = status;
   await asset.save();

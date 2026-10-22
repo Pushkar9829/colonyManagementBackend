@@ -139,11 +139,11 @@ export async function replaceMeter(ctx, id, { finalReading, serial, initialReadi
 export async function addReading(ctx, meterOrId, { reading, readAt, source = 'manual', note, device }) {
   const meter = meterOrId instanceof Meter ? meterOrId : await findMeter(ctx, meterOrId);
   const at = readAt ? new Date(readAt) : new Date();
-  if (!meter.active && source !== 'replacement') throw ApiError.conflict(`Meter ${meter.serial} is not active`);
+  if (!meter.active && source !== 'replacement') throw ApiError.conflict('Meter {serial} is not active', { params: { serial: meter.serial } });
   if (at.getTime() > Date.now() + FUTURE_SKEW_MS) throw ApiError.badRequest('Reading time cannot be in the future');
   if (meter.installedAt && at < meter.installedAt) throw ApiError.badRequest('Reading is older than the meter installation');
   if (meter.billedAt && at <= meter.billedAt) throw ApiError.conflict('Consumption up to this date has already been billed');
-  if (reading < meter.initialReading) throw ApiError.badRequest(`Reading cannot be below the meter's initial reading (${meter.initialReading})`);
+  if (reading < meter.initialReading) throw ApiError.badRequest("Reading cannot be below the meter's initial reading ({reading})", { params: { reading: meter.initialReading } });
 
   const [prev, next] = await Promise.all([
     MeterReading.findOne({ meter: meter._id, readAt: { $lt: at } }).sort({ readAt: -1 }).lean(),
@@ -152,7 +152,7 @@ export async function addReading(ctx, meterOrId, { reading, readAt, source = 'ma
   if (prev && reading < prev.reading) {
     throw ApiError.badRequest('Reading cannot go backwards: last reading was {reading} on {date}', { params: { reading: prev.reading, date: prev.readAt.toISOString().slice(0, 10) } });
   }
-  if (next && reading > next.reading) throw ApiError.badRequest(`Reading is higher than the later reading ${next.reading}`);
+  if (next && reading > next.reading) throw ApiError.badRequest('Reading is higher than the later reading {reading}', { params: { reading: next.reading } });
 
   let doc;
   try {

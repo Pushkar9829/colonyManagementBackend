@@ -86,7 +86,7 @@ export async function createSlots(ctx, { area, number, prefix, from, to, ...rest
   await assertArea(ctx, area);
   const numbers = number ? [number.toUpperCase()] : Array.from({ length: to - from + 1 }, (_, i) => `${prefix || ''}${from + i}`.toUpperCase());
   const existing = new Set((await ParkingSlot.find({ society: ctx.societyId, number: { $in: numbers } }).select('number').lean()).map((s) => s.number));
-  if (number && existing.size) throw ApiError.conflict(`Slot ${number} already exists`);
+  if (number && existing.size) throw ApiError.conflict('Slot {slot} already exists', { params: { slot: number } });
   const docs = numbers.filter((n) => !existing.has(n)).map((n) => ({ ...rest, area, number: n, society: ctx.societyId }));
   if (docs.length) await ParkingSlot.insertMany(docs, { ordered: false });
   audit.record(ctx, 'parking.slots_created', 'ParkingSlot', null, { area, count: docs.length });
@@ -129,16 +129,16 @@ export async function allot(ctx, id, { unit: unitId, vehicles: vehicleIds = [] }
   const unit = await units.assertUnit(ctx.societyId, unitId);
   if (!slot.active) throw ApiError.conflict('This slot is not in use');
   if (slot.pool === 'visitor') throw ApiError.conflict('Visitor-pool slots cannot be allotted to a unit');
-  if (slot.unit && String(slot.unit._id) !== String(unit._id)) throw ApiError.conflict(`Slot ${slot.number} is already allotted to ${slot.unit.label}`);
+  if (slot.unit && String(slot.unit._id) !== String(unit._id)) throw ApiError.conflict('Slot {slot} is already allotted to {unit}', { params: { slot: slot.number, unit: slot.unit.label } });
 
   const vs = vehicleIds.length ? await vehicles.findByIds(ctx.societyId, vehicleIds) : [];
   if (vs.length !== new Set(vehicleIds.map(String)).size) throw ApiError.badRequest('One or more vehicles are invalid');
   for (const v of vs) {
-    if (String(v.unit) !== String(unit._id)) throw ApiError.badRequest(`${v.number} is not registered to ${unit.label}`);
-    if (!fits(slot.type, v.type)) throw ApiError.badRequest(`${v.number} does not fit a ${slot.type.replace('_', ' ')} slot`);
+    if (String(v.unit) !== String(unit._id)) throw ApiError.badRequest('{vehicle} is not registered to {unit}', { params: { vehicle: v.number, unit: unit.label } });
+    if (!fits(slot.type, v.type)) throw ApiError.badRequest('{vehicle} does not fit a {type} slot', { params: { vehicle: v.number, type: slot.type.replace('_', ' ') } });
   }
   const elsewhere = vs.length ? await ParkingSlot.findOne({ society: ctx.societyId, _id: { $ne: slot._id }, vehicles: { $in: vs.map((v) => v._id) } }).select('number').lean() : null;
-  if (elsewhere) throw ApiError.conflict(`A selected vehicle is already linked to slot ${elsewhere.number}`);
+  if (elsewhere) throw ApiError.conflict('A selected vehicle is already linked to slot {slot}', { params: { slot: elsewhere.number } });
 
   const updated = await ParkingSlot.findOneAndUpdate(
     { _id: slot._id, $or: [{ unit: null }, { unit: unit._id }] },
@@ -147,7 +147,7 @@ export async function allot(ctx, id, { unit: unitId, vehicles: vehicleIds = [] }
   )
     .populate(SLOT_POPULATE)
     .lean();
-  if (!updated) throw ApiError.conflict(`Slot ${slot.number} was just allotted to another unit`);
+  if (!updated) throw ApiError.conflict('Slot {slot} was just allotted to another unit', { params: { slot: slot.number } });
 
   const unlinked = (slot.vehicles || []).filter((v) => !vs.some((x) => String(x._id) === String(v)));
   await vehicles.setParkingSlot(ctx.societyId, unlinked, null);
@@ -218,7 +218,7 @@ const VP_POPULATE = [
 export async function startVisitorParking(ctx, { slot: slotId, vehicleNumber, visitorId, unit: unitId, hours, expectedOutAt }) {
   const slot = await ParkingSlot.findOne({ _id: slotId, society: ctx.societyId }).lean();
   if (!slot) throw ApiError.notFound('Slot not found');
-  if (slot.pool !== 'visitor' || !slot.active) throw ApiError.conflict(`Slot ${slot.number} is not a visitor slot`);
+  if (slot.pool !== 'visitor' || !slot.active) throw ApiError.conflict('Slot {slot} is not a visitor slot', { params: { slot: slot.number } });
   let unit = unitId;
   if (visitorId) {
     const v = await Visitor.findOne({ _id: visitorId, society: ctx.societyId }).select('unit vehicleNumber').lean();

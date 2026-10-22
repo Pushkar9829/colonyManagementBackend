@@ -266,7 +266,7 @@ export function reportTable(report, data, society) {
         ],
       };
     default:
-      throw ApiError.badRequest(`Unknown report ${report}`);
+      throw ApiError.badRequest('Unknown report {report}', { params: { report } });
   }
 }
 
@@ -274,7 +274,7 @@ export function reportTable(report, data, society) {
 
 async function entriesInRange(ctx, range) {
   const count = await JournalEntry.countDocuments({ society: ctx.societyId, date: { $gte: range.from, $lte: range.to } });
-  if (count > MAX_EXPORT_ENTRIES) throw ApiError.badRequest(`Too many entries (${count}). Export a shorter date range.`);
+  if (count > MAX_EXPORT_ENTRIES) throw ApiError.badRequest('Too many entries ({count}). Export a shorter date range.', { params: { count } });
   return JournalEntry.find({ society: ctx.societyId, date: { $gte: range.from, $lte: range.to } })
     .sort({ date: 1, number: 1 })
     .populate([{ path: 'lines.unit', select: 'label' }, { path: 'lines.vendor', select: 'name' }])

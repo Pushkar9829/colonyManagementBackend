@@ -220,7 +220,7 @@ export async function guardCheckIn(ctx, id, note) {
 // Visitors may leave by any gate; the exit gate is recorded.
 export async function checkOut(ctx, id, { occurredAt, gateId } = {}) {
   const visitor = await getForAction(ctx, id);
-  if (visitor.status === 'checked_out') throw ApiError.conflict(`Already checked out at ${visitor.checkOutAt?.toISOString() || 'an earlier time'}`);
+  if (visitor.status === 'checked_out') throw ApiError.conflict('Already checked out at {time}', { params: { time: visitor.checkOutAt?.toISOString() || 'an earlier time' } });
   if (visitor.status !== 'checked_in') throw ApiError.conflict('Only visitors inside can be checked out');
   const at = resolveTime(occurredAt);
   const gate = await gateSvc.resolveGate(ctx, gateId);

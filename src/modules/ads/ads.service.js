@@ -32,8 +32,8 @@ export async function saveMedia(ctx, scope, file) {
   const mimetype = image && image !== 'application/pdf' ? image : sniffVideo(file.buffer);
   if (!mimetype) throw ApiError.badRequest('Only JPG, PNG or WEBP images and MP4 or WebM videos can be used in ads');
   const isVideo = mimetype.startsWith('video/');
-  if (!isVideo && file.size > MAX_IMAGE_BYTES) throw ApiError.badRequest(`Images must be ${MB(MAX_IMAGE_BYTES)} or smaller`);
-  if (isVideo && file.size > MAX_VIDEO_BYTES) throw ApiError.badRequest(`Videos must be ${MB(MAX_VIDEO_BYTES)} or smaller`);
+  if (!isVideo && file.size > MAX_IMAGE_BYTES) throw ApiError.badRequest('Images must be {size} or smaller', { params: { size: MB(MAX_IMAGE_BYTES) } });
+  if (isVideo && file.size > MAX_VIDEO_BYTES) throw ApiError.badRequest('Videos must be {size} or smaller', { params: { size: MB(MAX_VIDEO_BYTES) } });
   const folder = scope === 'platform' ? 'platform/ads' : `${ctx.societyId}/ads`;
   const stored = await storage.save({ buffer: file.buffer, mimetype, folder });
   const doc = await AdMedia.create({

@@ -72,7 +72,7 @@ export async function reverseAdvance(ctx, paymentId, reason, session) {
   const adj = await Adjustment.findOne({ society: ctx.societyId, payment: paymentId, type: 'advance', status: 'approved' }).session(session || null);
   if (!adj) return null;
   if (!(await creditOut(ctx.societyId, adj.unit, adj.amount, session))) {
-    throw ApiError.conflict(`The advance from this payment (${money(adj.amount)}) has already been used on bills. Reverse those first.`);
+    throw ApiError.conflict('The advance from this payment ({amount}) has already been used on bills. Reverse those first.', { params: { amount: money(adj.amount) } });
   }
   adj.status = 'rejected';
   adj.decisionNote = reason;
@@ -138,7 +138,7 @@ export async function issueCredit(ctx, { unit, amount, reason }) {
 export async function refund(ctx, { unit, amount, method, reference, reason }) {
   if (!(await Unit.exists({ _id: unit, society: ctx.societyId }))) throw ApiError.notFound('Unit not found');
   const adj = await withTransaction(async (session) => {
-    if (!(await creditOut(ctx.societyId, unit, amount, session))) throw ApiError.badRequest(`Refund exceeds the advance balance (${money(await creditBalance(ctx.societyId, unit))})`);
+    if (!(await creditOut(ctx.societyId, unit, amount, session))) throw ApiError.badRequest('Refund exceeds the advance balance ({balance})', { params: { balance: money(await creditBalance(ctx.societyId, unit)) } });
     return createAdjustment(ctx.societyId, { unit, type: 'refund', amount, method, reference, reason: reason || 'Advance refund', requestedBy: ctx.userId, approvedBy: ctx.userId, approvedAt: new Date() }, session);
   });
   audit.record(ctx, 'adjustment.refund', 'Adjustment', adj._id, { amount, method, reference });

@@ -169,16 +169,16 @@ function evaluate(checklist, answers) {
     let value = raw;
     let ok = true;
     if (item.type === 'yes_no') {
-      if (typeof raw !== 'boolean') throw ApiError.badRequest(`"${item.label}" needs a yes / no answer`);
+      if (typeof raw !== 'boolean') throw ApiError.badRequest('"{item}" needs a yes / no answer', { params: { item: item.label } });
       ok = raw;
     } else if (item.type === 'reading') {
       value = Number(raw);
-      if (!Number.isFinite(value)) throw ApiError.badRequest(`"${item.label}" needs a number`);
+      if (!Number.isFinite(value)) throw ApiError.badRequest('"{item}" needs a number', { params: { item: item.label } });
       ok = (item.min === undefined || item.min === null || value >= item.min) && (item.max === undefined || item.max === null || value <= item.max);
     } else value = String(raw);
     results.push({ itemId: item._id, label: item.label, type: item.type, unit: item.unit, min: item.min, max: item.max, value, ok });
   }
-  if (missing.length) throw ApiError.badRequest(`Answer the required items: ${missing.join(', ')}`);
+  if (missing.length) throw ApiError.badRequest('Answer the required items: {items}', { params: { items: missing.join(', ') } });
   return results;
 }
 
@@ -186,9 +186,9 @@ const EARLY_DAYS = 3; // tasks can be done a little ahead of the due date, not w
 
 export async function completeTask(ctx, id, { results: answers, photos: photoIds, remarks, raiseBreakdown }) {
   const task = await loadTask(ctx, id);
-  if (!['pending', 'overdue'].includes(task.status)) throw ApiError.conflict(`This task is ${task.status}`);
+  if (!['pending', 'overdue'].includes(task.status)) throw ApiError.conflict('This task is {status}', { params: { status: task.status } });
   const t = today();
-  if (diffDays(t, task.dueDate) > EARLY_DAYS) throw ApiError.conflict(`This task is due on ${task.dueDate}; it can be done at most ${EARLY_DAYS} days early`);
+  if (diffDays(t, task.dueDate) > EARLY_DAYS) throw ApiError.conflict('This task is due on {date}; it can be done at most {days} days early', { params: { date: task.dueDate, days: EARLY_DAYS } });
   const schedule = await PpmSchedule.findById(task.schedule).select('checklist').lean();
   const results = evaluate(schedule?.checklist || [], answers);
   const photos = await uploads.resolve(ctx, photoIds);
@@ -217,7 +217,7 @@ export async function completeTask(ctx, id, { results: answers, photos: photoIds
 
 export async function skipTask(ctx, id, { reason }) {
   const task = await loadTask(ctx, id);
-  if (!['pending', 'overdue'].includes(task.status)) throw ApiError.conflict(`This task is ${task.status}`);
+  if (!['pending', 'overdue'].includes(task.status)) throw ApiError.conflict('This task is {status}', { params: { status: task.status } });
   task.set({ status: 'skipped', skipReason: reason });
   await task.save();
   audit.record(ctx, 'ppm.task_skipped', 'PpmTask', task._id, { reason });
@@ -226,7 +226,7 @@ export async function skipTask(ctx, id, { reason }) {
 
 export async function reassignTask(ctx, id, { assignee, assigneeRole }) {
   const task = await loadTask(ctx, id);
-  if (!['pending', 'overdue'].includes(task.status)) throw ApiError.conflict(`This task is ${task.status}`);
+  if (!['pending', 'overdue'].includes(task.status)) throw ApiError.conflict('This task is {status}', { params: { status: task.status } });
   if (assignee) await assertMember(ctx, assignee);
   task.assignee = assignee || undefined;
   if (assigneeRole) task.assigneeRole = assigneeRole;
@@ -385,7 +385,7 @@ const BD_FLOW = { open: ['in_progress', 'resolved'], in_progress: ['resolved'], 
 
 export async function changeBreakdownStatus(ctx, id, { status, resolution, cost, attachments: ids }) {
   const b = await loadBreakdown(ctx, id);
-  if (!BD_FLOW[b.status].includes(status)) throw ApiError.conflict(`Cannot move from ${b.status} to ${status}`);
+  if (!BD_FLOW[b.status].includes(status)) throw ApiError.conflict('Cannot move from {from} to {to}', { params: { from: b.status, to: status } });
   if (status === 'closed' && !isManagerRole(ctx.role)) throw ApiError.forbidden('Only managers can close breakdowns');
   if (status === 'resolved' && !resolution) throw ApiError.badRequest('Describe the resolution');
   const attachments = await uploads.resolve(ctx, ids);

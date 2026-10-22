@@ -84,7 +84,7 @@ export function recordOffline(ctx, { booking, pass, amenity, unit, user, charges
 // platform account for Route / legacy), resolved by getGateway like every other resident payment.
 async function gatewayRefund(payment, amount) {
   if (payment.provider === 'offline') return null; // cash/UPI handed back by the office
-  if (payment.provider !== 'mock' && payment.provider !== 'razorpay') throw ApiError.badRequest(`Refunds are not supported for provider ${payment.provider}`);
+  if (payment.provider !== 'mock' && payment.provider !== 'razorpay') throw ApiError.badRequest('Refunds are not supported for provider {provider}', { params: { provider: payment.provider } });
   const gateway = await getGateway(payment.society, { purpose: 'settle' });
   try {
     return (await gateway.refund({ paymentId: payment.providerPaymentId, amount, notes: { amenityPayment: String(payment._id) } })).refundId;

@@ -52,7 +52,7 @@ function hourMeter(point, data) {
   let { hoursStart, hoursEnd, runHours } = data;
   if (hoursEnd !== undefined && hoursStart === undefined && point.lastHours !== undefined && point.lastHours !== null) hoursStart = point.lastHours;
   if (hoursEnd !== undefined && hoursStart !== undefined) {
-    if (hoursEnd < hoursStart) throw ApiError.badRequest(`Closing hours (${hoursEnd}) cannot be below opening hours (${hoursStart})`);
+    if (hoursEnd < hoursStart) throw ApiError.badRequest('Closing hours ({closing}) cannot be below opening hours ({opening})', { params: { closing: hoursEnd, opening: hoursStart } });
     runHours = round3(hoursEnd - hoursStart);
   }
   return { hoursStart, hoursEnd, runHours };
@@ -79,7 +79,7 @@ export async function createReading(ctx, data) {
         [{ $set: { dieselStock: { $round: [{ $add: ['$dieselStock', filled - consumed] }, 3] }, lastReadingAt: base.at, ...(hm.hoursEnd !== undefined && { lastHours: hm.hoursEnd }) } }],
         { returnDocument: 'after', updatePipeline: true },
       ).lean();
-      if (!updated) throw ApiError.conflict(`Consumption is more than the ${point.dieselStock} L in stock`);
+      if (!updated) throw ApiError.conflict('Consumption is more than the {stock} L in stock', { params: { stock: point.dieselStock } });
       reading = await UtilityReading.create({ ...base, ...hm, dieselFilled: filled || undefined, dieselConsumed: consumed || undefined, dieselCost: data.dieselCost, dieselStock: updated.dieselStock });
       if (point.capacity && updated.dieselStock < point.capacity * 0.2) alert = { title: `Low diesel: ${point.name}`, body: `${updated.dieselStock} L left of ${point.capacity} L` };
       return finish(ctx, reading, alert);
@@ -112,7 +112,7 @@ export async function createReading(ctx, data) {
       if (!data.values?.length) throw ApiError.badRequest('Enter at least one parameter');
       const values = data.values.map(({ key, value }) => {
         const p = params.get(key);
-        if (!p) throw ApiError.badRequest(`Unknown parameter "${key}" for ${point.name}`);
+        if (!p) throw ApiError.badRequest('Unknown parameter "{parameter}" for {point}', { params: { parameter: key, point: point.name } });
         const outOfRange = (p.min !== undefined && p.min !== null && value < p.min) || (p.max !== undefined && p.max !== null && value > p.max);
         return { key, label: p.label, unit: p.unit, value, outOfRange };
       });
@@ -125,7 +125,7 @@ export async function createReading(ctx, data) {
       if (data.meterReading === undefined) throw ApiError.badRequest('Enter the meter reading');
       const last = point.lastMeterReading;
       const hasLast = last !== undefined && last !== null && !data.meterReset;
-      if (hasLast && data.meterReading < last) throw ApiError.badRequest(`Reading ${data.meterReading} is below the previous ${last}. Tick "meter reset" if the meter was replaced.`);
+      if (hasLast && data.meterReading < last) throw ApiError.badRequest('Reading {reading} is below the previous {previous}. Tick "meter reset" if the meter was replaced.', { params: { reading: data.meterReading, previous: last } });
       reading = await UtilityReading.create({ ...base, meterReading: data.meterReading, consumption: hasLast ? round3(data.meterReading - last) : undefined });
       pointUpdate.lastMeterReading = data.meterReading;
       break;

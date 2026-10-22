@@ -13,7 +13,7 @@ const parser = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX
 const receive = (req, res, next) =>
   parser(req, res, (err) => {
     if (!err) return next();
-    if (err.code === 'LIMIT_FILE_SIZE') return next(ApiError.badRequest(`The file is larger than ${MAX_VIDEO_BYTES / 1024 / 1024} MB`));
+    if (err.code === 'LIMIT_FILE_SIZE') return next(ApiError.badRequest('The file is larger than {mb} MB', { params: { mb: MAX_VIDEO_BYTES / 1024 / 1024 } }));
     return next(ApiError.badRequest(err.message));
   });
 

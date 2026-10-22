@@ -107,7 +107,7 @@ export async function ackCommand(ctx, id, { status, message }) {
     const existing = await BarrierCommand.findOne({ _id: id, society: ctx.societyId }).select('status').lean();
     if (!existing) throw ApiError.notFound('Command not found');
     if (existing.status === status) return { _id: id, status };
-    throw ApiError.conflict(`Command is already ${existing.status}`);
+    throw ApiError.conflict('Command is already {status}', { params: { status: existing.status } });
   }
   invalidate(ctx.societyId, ['barrierCommands'], { roles: [ROLES.GUARD] });
   return { _id: cmd._id, status: cmd.status };

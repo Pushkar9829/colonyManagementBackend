@@ -299,7 +299,7 @@ export async function markAttendance(ctx, id, { entries }) {
   for (const e of entries) {
     const invitee = byId.get(String(e.membership));
     if (!invitee) throw ApiError.badRequest('Only invited members can be marked present');
-    if (e.mode === 'proxy' && !e.proxyHolder) throw ApiError.badRequest(`Name the proxy holder for ${invitee.name}`);
+    if (e.mode === 'proxy' && !e.proxyHolder) throw ApiError.badRequest('Name the proxy holder for {name}', { params: { name: invitee.name } });
     const existing = meeting.attendance.find((a) => String(a.membership) === String(e.membership));
     const row = { membership: invitee._id, user: invitee.user, name: invitee.name, unitLabel: invitee.unitLabel, mode: e.mode, proxyHolder: e.mode === 'proxy' ? e.proxyHolder : undefined, markedBy: ctx.userId };
     if (existing) Object.assign(existing, row);
@@ -323,14 +323,14 @@ export async function removeAttendance(ctx, id, membershipId) {
 
 function validateResolution(meeting, data, invitees) {
   const quorum = quorumState(meeting, invitees.length);
-  if (!quorum.met) throw ApiError.conflict(`Quorum not met (${quorum.present} present, ${quorum.required} required); resolutions cannot be passed`);
+  if (!quorum.met) throw ApiError.conflict('Quorum not met ({present} present, {required} required); resolutions cannot be passed', { params: { present: quorum.present, required: quorum.required } });
   const presentIds = new Set(meeting.attendance.map((a) => String(a.membership)));
   const nameOf = (mid) => meeting.attendance.find((a) => String(a.membership) === String(mid))?.name;
   if (data.proposedBy && !presentIds.has(String(data.proposedBy))) throw ApiError.badRequest('The proposer must be present at the meeting');
   if (data.secondedBy && !presentIds.has(String(data.secondedBy))) throw ApiError.badRequest('The seconder must be present at the meeting');
   if (data.proposedBy && data.secondedBy && String(data.proposedBy) === String(data.secondedBy)) throw ApiError.badRequest('Proposer and seconder must be different members');
   const total = (data.votesFor || 0) + (data.votesAgainst || 0) + (data.abstain || 0);
-  if (total > quorum.present) throw ApiError.badRequest(`Votes (${total}) exceed members present (${quorum.present})`);
+  if (total > quorum.present) throw ApiError.badRequest('Votes ({votes}) exceed members present ({present})', { params: { votes: total, present: quorum.present } });
   if (data.agendaItem && !meeting.agenda.id(data.agendaItem)) throw ApiError.badRequest('Unknown agenda item');
   return {
     proposedByName: data.proposedBy ? nameOf(data.proposedBy) : undefined,

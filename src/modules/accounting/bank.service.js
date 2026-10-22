@@ -27,8 +27,8 @@ const refKey = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 async function bankAccount(ctx, code) {
   const accounts = await accountsByCode(ctx.societyId);
   const account = accounts.get(code);
-  if (!account) throw ApiError.notFound(`Account ${code} not found`);
-  if (!account.isBank) throw ApiError.badRequest(`${code} ${account.name} is not a bank account`);
+  if (!account) throw ApiError.notFound('Account {code} not found', { params: { code } });
+  if (!account.isBank) throw ApiError.badRequest('{code} {name} is not a bank account', { params: { code, name: account.name } });
   return account;
 }
 
@@ -256,7 +256,7 @@ export async function matchLine(ctx, id, { entryLines }) {
   if (ids.some((x) => taken.has(x))) throw ApiError.conflict('A journal line is already matched to another statement line');
   const bookNet = found.reduce((s, f) => s + f.line.debit - f.line.credit, 0);
   const bankNet = line.deposit - line.withdrawal;
-  if (bookNet !== bankNet) throw ApiError.badRequest(`Amounts differ: statement ${bankNet} vs books ${bookNet} (paise)`);
+  if (bookNet !== bankNet) throw ApiError.badRequest('Amounts differ: statement {statement} vs books {books} (paise)', { params: { statement: bankNet, books: bookNet } });
   line.set({ status: 'matched', matchType: 'manual', entries: [...new Set(found.map((f) => String(f.entry._id)))], entryLines: ids, matchedAt: new Date(), matchedBy: ctx.userId });
   await line.save();
   refresh(ctx.societyId);

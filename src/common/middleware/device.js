@@ -8,7 +8,7 @@ export const authenticateDevice = (scope) => async (req, _res, next) => {
   try {
     const device = await findActiveByKey(req.headers['x-device-key']);
     if (!device) throw new ApiError(401, 'DEVICE_UNAUTHORIZED', 'Invalid or revoked device key');
-    if (scope && !device.scopes.includes(scope)) throw new ApiError(403, 'DEVICE_SCOPE', `This device key lacks the "${scope}" permission`);
+    if (scope && !device.scopes.includes(scope)) throw new ApiError(403, 'DEVICE_SCOPE', 'This device key lacks the "{scope}" permission', { params: { scope } });
     req.device = device;
     req.user = { _id: null, society: device.society, role: 'device', unit: null, membershipId: null, name: device.name };
     next();

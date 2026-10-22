@@ -18,8 +18,8 @@ export async function saveBudget(ctx, fyStart, { lines }) {
   const accounts = await accountsByCode(ctx.societyId);
   for (const l of lines) {
     const a = accounts.get(l.code);
-    if (!a) throw ApiError.badRequest(`Unknown account ${l.code}`);
-    if (!BUDGET_TYPES.includes(a.type)) throw ApiError.badRequest(`Budgets are for income and expense accounts; ${l.code} is ${a.type}`);
+    if (!a) throw ApiError.badRequest('Unknown account {code}', { params: { code: l.code } });
+    if (!BUDGET_TYPES.includes(a.type)) throw ApiError.badRequest('Budgets are for income and expense accounts; {code} is {type}', { params: { code: l.code, type: a.type } });
   }
   const ops = lines.map((l) =>
     l.amount > 0

@@ -275,7 +275,7 @@ export async function join(data) {
   try {
     await usersService.assertIdentifiersFree(data);
   } catch (err) {
-    if (err.status === 409) throw ApiError.conflict(`${err.message}. Log in and use "Add another home" instead.`);
+    if (err.status === 409) throw ApiError.conflict('{reason}. Log in and use "Add another home" instead.', { params: { reason: err.message } });
     throw err;
   }
   const user = await User.create({ name: data.name, email: data.email, phone: data.phone, passwordHash: await User.hashPassword(data.password) });

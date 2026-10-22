@@ -58,7 +58,7 @@ async function assertSlotFree(ctx, { date, startTime, endTime }, exceptId) {
   if (toMinutes(endTime) <= toMinutes(startTime)) throw ApiError.badRequest('End time must be after start time');
   const sameDay = await Possession.find({ society: ctx.societyId, date, status: 'scheduled', ...(exceptId ? { _id: { $ne: exceptId } } : {}) }).populate('unit', 'label').lean();
   const clash = sameDay.find((p) => toMinutes(p.startTime) < toMinutes(endTime) && toMinutes(startTime) < toMinutes(p.endTime));
-  if (clash) throw ApiError.conflict(`That slot overlaps the possession of ${clash.unit?.label} (${clash.startTime}-${clash.endTime})`);
+  if (clash) throw ApiError.conflict('That slot overlaps the possession of {unit} ({start}-{end})', { params: { unit: clash.unit?.label, start: clash.startTime, end: clash.endTime } });
 }
 
 const POSSESSION_POPULATE = [{ path: 'unit', select: 'label' }, { path: 'completedBy', select: 'name' }];
@@ -66,7 +66,7 @@ const POSSESSION_POPULATE = [{ path: 'unit', select: 'label' }, { path: 'complet
 export async function schedulePossession(ctx, data) {
   const label = await unitLabel(ctx, data.unit);
   if (await Possession.exists({ society: ctx.societyId, unit: data.unit, status: { $in: ['scheduled', 'completed'] } })) {
-    throw ApiError.conflict(`${label} already has a possession appointment`);
+    throw ApiError.conflict('{unit} already has a possession appointment', { params: { unit: label } });
   }
   await assertSlotFree(ctx, data);
   const checklist = (data.checklist?.length ? data.checklist : DEFAULT_POSSESSION_CHECKLIST).map((item) => ({ item }));
@@ -95,7 +95,7 @@ async function loadPossession(ctx, id) {
 
 export async function updatePossession(ctx, id, data) {
   const doc = await loadPossession(ctx, id);
-  if (doc.status !== 'scheduled') throw ApiError.conflict(`This appointment is ${doc.status}`);
+  if (doc.status !== 'scheduled') throw ApiError.conflict('This appointment is {status}', { params: { status: doc.status } });
   const moved = ['date', 'startTime', 'endTime'].some((k) => data[k] && data[k] !== doc[k]);
   if (moved) await assertSlotFree(ctx, { date: data.date || doc.date, startTime: data.startTime || doc.startTime, endTime: data.endTime || doc.endTime }, doc._id);
   for (const k of ['buyerName', 'buyerPhone', 'buyerEmail', 'date', 'startTime', 'endTime', 'notes']) if (data[k] !== undefined) doc[k] = data[k];
@@ -116,9 +116,9 @@ export async function updatePossession(ctx, id, data) {
 
 export async function completePossession(ctx, id, { note }) {
   const doc = await loadPossession(ctx, id);
-  if (doc.status !== 'scheduled') throw ApiError.conflict(`This appointment is ${doc.status}`);
+  if (doc.status !== 'scheduled') throw ApiError.conflict('This appointment is {status}', { params: { status: doc.status } });
   const pending = doc.checklist.filter((c) => !c.done).map((c) => c.item);
-  if (pending.length) throw ApiError.conflict(`Finish the checklist first: ${pending.join(', ')}`);
+  if (pending.length) throw ApiError.conflict('Finish the checklist first: {items}', { params: { items: pending.join(', ') } });
   doc.status = 'completed';
   doc.completedAt = new Date();
   doc.completedBy = ctx.userId;
@@ -130,7 +130,7 @@ export async function completePossession(ctx, id, { note }) {
 
 export async function cancelPossession(ctx, id, { reason }) {
   const doc = await loadPossession(ctx, id);
-  if (doc.status !== 'scheduled') throw ApiError.conflict(`This appointment is ${doc.status}`);
+  if (doc.status !== 'scheduled') throw ApiError.conflict('This appointment is {status}', { params: { status: doc.status } });
   doc.status = 'cancelled';
   doc.notes = [doc.notes, `Cancelled: ${reason}`].filter(Boolean).join('\n');
   await doc.save();
@@ -221,7 +221,7 @@ const SNAG_TRANSITIONS = { open: ['in_progress', 'fixed'], reopened: ['in_progre
 export async function updateSnag(ctx, id, data) {
   const snag = await loadSnag(ctx, id);
   if (data.status && data.status !== snag.status) {
-    if (!SNAG_TRANSITIONS[snag.status].includes(data.status)) throw ApiError.conflict(`Cannot move a ${snag.status.replace('_', ' ')} snag to ${data.status.replace('_', ' ')}`);
+    if (!SNAG_TRANSITIONS[snag.status].includes(data.status)) throw ApiError.conflict('Cannot move a {from} snag to {to}', { params: { from: snag.status.replace('_', ' '), to: data.status.replace('_', ' ') } });
     moveSnag(snag, ctx.userId, data.status, data.note);
     if (data.status === 'fixed') snag.fixedAt = new Date();
   }
@@ -338,7 +338,7 @@ export async function signHandover(ctx, { side, name, note }) {
   const doc = await handoverDoc(ctx);
   if (doc.status === 'completed') throw ApiError.conflict('The handover is already complete');
   const pending = doc.items.filter((i) => i.status === 'pending');
-  if (pending.length) throw ApiError.conflict(`${pending.length} item(s) are still pending. Mark them transferred or not applicable first.`);
+  if (pending.length) throw ApiError.conflict('{count} item(s) are still pending. Mark them transferred or not applicable first.', { params: { count: pending.length } });
   // The builder signs as a "Builder" admin; the association through one of its own (non-builder) admins.
   if (side === 'builder' && !isBuilder(ctx)) throw ApiError.forbidden('Only a builder admin (designation "Builder") can sign for the builder');
   if (side === 'association' && isBuilder(ctx)) throw ApiError.forbidden('The association must sign through one of its own admins');

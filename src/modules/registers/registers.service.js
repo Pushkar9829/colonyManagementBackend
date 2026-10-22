@@ -163,7 +163,7 @@ async function allocateShares(societyId, count, from, session) {
   if (from) {
     const to = from + count - 1;
     const clash = await ShareCertificate.findOne({ society: societyId, shareFrom: { $lte: to }, shareTo: { $gte: from } }).session(session || null).lean();
-    if (clash) throw ApiError.conflict(`Shares ${from}-${to} overlap certificate No. ${clash.certificateNo} (${clash.shareFrom}-${clash.shareTo})`);
+    if (clash) throw ApiError.conflict('Shares {from}-{to} overlap certificate No. {certificate} ({clashFrom}-{clashTo})', { params: { from, to, certificate: clash.certificateNo, clashFrom: clash.shareFrom, clashTo: clash.shareTo } });
     await Counter.updateOne({ society: societyId, key: 'share-no' }, { $max: { seq: to } }, { upsert: true, session });
     return { shareFrom: from, shareTo: to };
   }

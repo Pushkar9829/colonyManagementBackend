@@ -197,7 +197,7 @@ export async function platformReply(platformUser, id, { text, status }) {
 
 export async function setStatus(platformUser, id, { status, note }) {
   const ticket = await load({ _id: id });
-  if (ticket.status === status) throw ApiError.conflict(`Ticket is already ${status.replace(/_/g, ' ')}`);
+  if (ticket.status === status) throw ApiError.conflict('Ticket is already {status}', { params: { status: status.replace(/_/g, ' ') } });
   move(ticket, platformUser._id, status, note);
   if (!ticket.firstResponseAt && status !== 'open') ticket.firstResponseAt = new Date();
   ticket.awaiting = ['resolved', 'closed'].includes(status) ? 'none' : status === 'waiting_on_customer' ? 'society' : 'platform';

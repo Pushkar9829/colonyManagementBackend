@@ -71,7 +71,7 @@ export async function getGateway(societyId, { purpose = 'checkout' } = {}) {
   const s = await loadOrLegacy(societyId);
   if (purpose === 'checkout') {
     const r = readiness(s);
-    if (r.status !== 'active') throw new ApiError(400, 'ONLINE_PAYMENTS_OFF', `Online payments are not available in this society right now. {reason}${String(r.reason).endsWith('.') ? '' : '.'}`, { params: { reason: r.reason } });
+    if (r.status !== 'active') throw new ApiError(400, 'ONLINE_PAYMENTS_OFF', String(r.reason).endsWith('.') ? 'Online payments are not available in this society right now. {reason}' : 'Online payments are not available in this society right now. {reason}.', { params: { reason: r.reason } });
   }
   if (s.mode === 'disabled') return { ...platformProvider, mode: 'platform_legacy' };
   return { ...adapterFor(s), mode: s.mode };

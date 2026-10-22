@@ -103,7 +103,7 @@ const LISTS = { members: 'members', pets: 'pets' };
 export async function addItem(ctx, list, data) {
   const unitId = requireUnit(ctx);
   const doc = await getOrCreate(ctx, unitId);
-  if (doc[LISTS[list]].length >= 20) throw ApiError.badRequest(`At most 20 ${list} per home`);
+  if (doc[LISTS[list]].length >= 20) throw ApiError.badRequest('At most 20 {list} per home', { params: { list } });
   doc[LISTS[list]].push(await resolveFiles(ctx, data));
   doc.updatedBy = ctx.userId;
   await doc.save();

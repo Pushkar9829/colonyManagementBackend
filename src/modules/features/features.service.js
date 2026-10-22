@@ -57,7 +57,7 @@ export async function setOverrides(platformUser, societyId, overrides, note) {
   if (!(await Society.exists({ _id: societyId }))) throw ApiError.notFound('Society not found');
   const doc = (await SocietyFeatures.findOne({ society: societyId })) || new SocietyFeatures({ society: societyId });
   for (const [key, value] of Object.entries(overrides)) {
-    if (!FEATURE_KEYS.includes(key)) throw ApiError.badRequest(`Unknown feature "${key}"`);
+    if (!FEATURE_KEYS.includes(key)) throw ApiError.badRequest('Unknown feature "{feature}"', { params: { feature: key } });
     doc.overrides = doc.overrides.filter((o) => o.key !== key);
     if (value !== null) doc.overrides.push({ key, enabled: value, by: platformUser._id, at: new Date(), note });
   }

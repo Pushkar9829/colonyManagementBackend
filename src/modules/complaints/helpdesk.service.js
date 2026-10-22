@@ -65,7 +65,7 @@ export async function getCategory(ctx, key) {
 
 export async function assertActiveCategory(ctx, key) {
   const cat = await getCategory(ctx, key);
-  if (!cat.active) throw ApiError.badRequest(`The category "${cat.name}" is no longer used`);
+  if (!cat.active) throw ApiError.badRequest('The category "{name}" is no longer used', { params: { name: cat.name } });
   return cat;
 }
 
@@ -122,8 +122,8 @@ async function validateLevels(ctx, levels) {
   const sorted = [...levels].sort((a, b) => a.level - b.level);
   sorted.forEach((l, i) => {
     if (l.level !== i + 1) throw ApiError.badRequest('Levels must be 1, 2, 3 in order without gaps');
-    if (i && l.afterHours <= sorted[i - 1].afterHours) throw ApiError.badRequest(`Level ${l.level} must come later than level ${l.level - 1}`);
-    if (!l.roles?.length && !l.users?.length && !l.notifyAssignee) throw ApiError.badRequest(`Level ${l.level} has nobody to notify`);
+    if (i && l.afterHours <= sorted[i - 1].afterHours) throw ApiError.badRequest('Level {level} must come later than level {previous}', { params: { level: l.level, previous: l.level - 1 } });
+    if (!l.roles?.length && !l.users?.length && !l.notifyAssignee) throw ApiError.badRequest('Level {level} has nobody to notify', { params: { level: l.level } });
   });
   const userIds = [...new Set(sorted.flatMap((l) => l.users || []).map(String))];
   if (userIds.length) {

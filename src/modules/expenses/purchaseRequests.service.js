@@ -129,7 +129,7 @@ export async function remove(ctx, id) {
 export async function submit(ctx, id) {
   const pr = await load(ctx, id);
   if (!sameUser(pr.requestedBy, ctx.userId)) throw ApiError.forbidden('Only the requester can submit a request');
-  if (pr.status !== 'draft') throw ApiError.conflict(`Request is already ${pr.status}`);
+  if (pr.status !== 'draft') throw ApiError.conflict('Request is already {status}', { params: { status: pr.status } });
   const { autoApproveLimit } = await getSettings(ctx);
   if (autoApproveLimit > 0 && pr.amount <= autoApproveLimit) {
     // Small purchases within the committee's standing limit are approved without a second person.
@@ -158,7 +158,7 @@ export async function submit(ctx, id) {
 async function decide(ctx, id, to, note) {
   const pr = await PurchaseRequest.findOne({ _id: id, society: ctx.societyId });
   if (!pr) throw ApiError.notFound('Purchase request not found');
-  if (pr.status !== 'pending') throw ApiError.conflict(`Request is ${pr.status}, not pending`);
+  if (pr.status !== 'pending') throw ApiError.conflict('Request is {status}, not pending', { params: { status: pr.status } });
   if (sameUser(pr.requestedBy, ctx.userId)) throw ApiError.forbidden('You cannot approve or reject your own request (maker-checker)');
   transition(pr, ctx.userId, to, note);
   pr.decidedBy = ctx.userId;
@@ -183,8 +183,8 @@ export const reject = (ctx, id, { note }) => decide(ctx, id, 'rejected', note);
 export async function claimForBill(ctx, id, vendorId) {
   const pr = await PurchaseRequest.findOne({ _id: id, society: ctx.societyId }).lean();
   if (!pr) throw ApiError.badRequest('Purchase request not found');
-  if (pr.status !== 'approved') throw ApiError.conflict(`Purchase request ${pr.number} is ${pr.status}; only approved requests can be billed`);
-  if (pr.vendor && vendorId && String(pr.vendor) !== String(vendorId)) throw ApiError.badRequest(`Purchase request ${pr.number} is for a different vendor`);
+  if (pr.status !== 'approved') throw ApiError.conflict('Purchase request {number} is {status}; only approved requests can be billed', { params: { number: pr.number, status: pr.status } });
+  if (pr.vendor && vendorId && String(pr.vendor) !== String(vendorId)) throw ApiError.badRequest('Purchase request {number} is for a different vendor', { params: { number: pr.number } });
   return pr;
 }
 

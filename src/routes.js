@@ -23,6 +23,7 @@ import uploadRoutes from './modules/uploads/uploads.routes.js';
 import platformRoutes from './modules/platform/platform.routes.js';
 import deviceRoutes from './modules/devices/devices.routes.js';
 // ---- module route imports (add new modules below this line) ----
+import appearanceRoutes, { platformRouter as templatePlatformRoutes } from './modules/appearance/appearance.routes.js';
 import paymentSettingsRoutes, { platformRouter as paymentSettingsPlatformRoutes } from './modules/paymentSettings/paymentSettings.routes.js';
 import { brandingRouter, licenceRouter, resellerRouter, platformRouter as resellerPlatformRoutes } from './modules/whitelabel/whitelabel.routes.js';
 import peopleRoutes from './modules/people/people.routes.js';
@@ -116,6 +117,8 @@ router.use('/uploads', uploadRoutes);
 router.use('/platform', platformRoutes);
 router.use('/devices', deviceRoutes);
 // ---- module route mounts (add new modules below this line) ----
+router.use('/appearance', appearanceRoutes);
+router.use('/platform/templates', templatePlatformRoutes);
 router.use('/payment-settings', paymentSettingsRoutes);
 router.use('/platform/payment-settings', paymentSettingsPlatformRoutes);
 router.use('/platform/resellers', resellerPlatformRoutes);

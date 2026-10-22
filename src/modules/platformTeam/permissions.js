@@ -50,6 +50,13 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
+    key: 'appearance',
+    label: 'App templates',
+    permissions: [
+      { key: 'templates.manage', label: 'Manage app templates', description: 'Switch app templates on or off, set the default and which plans get which templates, and set or force a colony’s template and whether its admin may change it.' },
+    ],
+  },
+  {
     key: 'ads',
     label: 'Ads',
     permissions: [

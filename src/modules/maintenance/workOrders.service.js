@@ -83,7 +83,7 @@ export async function getById(ctx, id) {
 
 export async function update(ctx, id, data) {
   const wo = await load(ctx, id);
-  if (['verified', 'cancelled'].includes(wo.status)) throw ApiError.conflict(`Work order is ${wo.status}`);
+  if (['verified', 'cancelled'].includes(wo.status)) throw ApiError.conflict('Work order is {status}', { params: { status: wo.status } });
   if (data.technician) await assertMember(ctx, data.technician, [ROLES.STAFF, ROLES.FACILITY_MANAGER], 'Technician');
   const newTech = data.technician && String(data.technician) !== String(wo.technician || '');
   for (const [k, v] of Object.entries(data)) wo.set(k, v === null ? undefined : v);
@@ -98,7 +98,7 @@ const FLOW = { open: ['in_progress', 'completed', 'cancelled'], in_progress: ['c
 
 export async function changeStatus(ctx, id, { status, note, actualCost, attachments: ids }) {
   const wo = await load(ctx, id);
-  if (!FLOW[wo.status].includes(status)) throw ApiError.conflict(`Cannot move from ${wo.status} to ${status}`);
+  if (!FLOW[wo.status].includes(status)) throw ApiError.conflict('Cannot move from {from} to {to}', { params: { from: wo.status, to: status } });
   const manager = isManagerRole(ctx.role);
   if (!manager && ['verified', 'cancelled'].includes(status)) throw ApiError.forbidden('Only managers can verify or cancel work orders');
   if (!manager && wo.status === 'completed') throw ApiError.forbidden('Only managers can reopen completed work');

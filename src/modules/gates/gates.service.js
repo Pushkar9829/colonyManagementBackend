@@ -174,7 +174,7 @@ async function uniqueCode(societyId, wanted, name, excludeId) {
   const base = (wanted || name.replace(/gate/i, '').replace(/[^A-Za-z0-9]/g, '').slice(0, 5) || 'GATE').toUpperCase().slice(0, 8);
   if (wanted) {
     const taken = await Gate.exists({ society: societyId, code: base, _id: { $ne: excludeId } });
-    if (taken) throw ApiError.conflict(`Another gate already uses the code ${base}`);
+    if (taken) throw ApiError.conflict('Another gate already uses the code {code}', { params: { code: base } });
     return base;
   }
   for (let i = 0; i < 50; i += 1) {

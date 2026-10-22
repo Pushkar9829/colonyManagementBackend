@@ -58,8 +58,8 @@ async function buildLines(societyId, lines, { allowInactive }) {
     if (!debit && !credit) continue;
     const code = String(l.accountCode ?? l.code ?? '');
     const account = accounts.get(code);
-    if (!account) throw ApiError.badRequest(`Unknown account ${code}`);
-    if (!account.active && !allowInactive) throw ApiError.badRequest(`Account ${code} ${account.name} is inactive`);
+    if (!account) throw ApiError.badRequest('Unknown account {code}', { params: { code } });
+    if (!account.active && !allowInactive) throw ApiError.badRequest('Account {code} {name} is inactive', { params: { code, name: account.name } });
     out.push({
       account: account._id,
       code,
@@ -73,7 +73,7 @@ async function buildLines(societyId, lines, { allowInactive }) {
   const dr = out.reduce((s, l) => s + l.debit, 0);
   const cr = out.reduce((s, l) => s + l.credit, 0);
   if (out.length < 2) throw ApiError.badRequest('An entry needs at least one debit and one credit line');
-  if (dr !== cr) throw ApiError.badRequest(`Entry does not balance: debits ${dr} ≠ credits ${cr} (paise)`);
+  if (dr !== cr) throw ApiError.badRequest('Entry does not balance: debits {debits} ≠ credits {credits} (paise)', { params: { debits: dr, credits: cr } });
   if (dr <= 0) throw ApiError.badRequest('Entry total must be more than zero');
   return { lines: out, total: dr };
 }

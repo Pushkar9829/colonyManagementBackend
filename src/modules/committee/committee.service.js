@@ -140,9 +140,9 @@ export async function addPosition(ctx, termId, data) {
   const m = await Membership.findOne({ _id: data.membership, society: ctx.societyId, status: 'active' }).populate('user', 'name').populate('unit', 'label').lean();
   if (!m?.user) throw ApiError.badRequest('Select an active member of this society');
   const active = term.positions.filter((p) => p.active);
-  if (active.some((p) => String(p.user) === String(m.user._id))) throw ApiError.conflict(`${m.user.name} already holds a position in this committee`);
+  if (active.some((p) => String(p.user) === String(m.user._id))) throw ApiError.conflict('{name} already holds a position in this committee', { params: { name: m.user.name } });
   if (SINGLE_HOLDER.includes(data.position) && active.some((p) => p.position === data.position)) {
-    throw ApiError.conflict(`The ${data.position.replace('_', ' ')} post is already filled; end that term first`);
+    throw ApiError.conflict('The {position} post is already filled; end that term first', { params: { position: data.position.replace('_', ' ') } });
   }
   term.positions.push({
     ...data,
@@ -218,7 +218,7 @@ export async function termFromElection(ctx, { election: electionId, name, startD
   if (!election) throw ApiError.notFound('Election not found');
   if (election.status !== 'published') throw ApiError.conflict('Publish the election results first');
   const unresolved = (election.results || []).filter((r) => r.tie && !r.tieResolution);
-  if (unresolved.length) throw ApiError.conflict(`Resolve the tie for ${unresolved.map((r) => r.title).join(', ')} first`);
+  if (unresolved.length) throw ApiError.conflict('Resolve the tie for {posts} first', { params: { posts: unresolved.map((r) => r.title).join(', ') } });
   if (await CommitteeTerm.exists({ society: ctx.societyId, 'source.election': election._id })) {
     throw ApiError.conflict('A committee has already been created from this election');
   }

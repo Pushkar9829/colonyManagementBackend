@@ -86,7 +86,7 @@ async function insertBill(ctx, data, { vendor, recurring, recurringPeriod, skipP
       createdBy: ctx.userId || undefined,
     });
   } catch (err) {
-    if (err.code === 11000 && err.keyPattern?.billNo) throw ApiError.conflict(`Invoice ${data.billNo} from ${vendor.name} is already recorded`);
+    if (err.code === 11000 && err.keyPattern?.billNo) throw ApiError.conflict('Invoice {billNo} from {vendor} is already recorded', { params: { billNo: data.billNo, vendor: vendor.name } });
     throw err;
   }
   try {
@@ -180,8 +180,8 @@ async function paymentAccount(ctx, method, code) {
   const accounts = await accountsByCode(ctx.societyId);
   const chosen = code || (method === 'cash' ? CODES.CASH : CODES.BANK);
   const a = accounts.get(chosen);
-  if (!a || !(a.isBank || a.isCash)) throw ApiError.badRequest(`${chosen} is not a bank or cash account`);
-  if (!a.active) throw ApiError.badRequest(`${a.name} is inactive`);
+  if (!a || !(a.isBank || a.isCash)) throw ApiError.badRequest('{account} is not a bank or cash account', { params: { account: chosen } });
+  if (!a.active) throw ApiError.badRequest('{name} is inactive', { params: { name: a.name } });
   return a;
 }
 
@@ -196,15 +196,15 @@ export async function createPayment(ctx, data) {
     }, {}),
   );
   const allocated = allocations.reduce((s, a) => s + a.amount, 0);
-  if (allocated !== data.amount) throw ApiError.badRequest(`Allocations (${money(allocated)}) must add up to the payment amount (${money(data.amount)})`);
+  if (allocated !== data.amount) throw ApiError.badRequest('Allocations ({allocated}) must add up to the payment amount ({amount})', { params: { allocated: money(allocated), amount: money(data.amount) } });
 
   const bills = await VendorBill.find({ society: ctx.societyId, _id: { $in: allocations.map((a) => a.bill) } }).lean();
   if (bills.length !== allocations.length) throw ApiError.badRequest('One or more bills were not found');
   for (const a of allocations) {
     const b = bills.find((x) => String(x._id) === a.bill);
-    if (String(b.vendor) !== String(vendor._id)) throw ApiError.badRequest(`${b.number} belongs to a different vendor`);
-    if (!OPEN_BILL.includes(b.status)) throw ApiError.conflict(`${b.number} is ${b.status}`);
-    if (a.amount > b.payable - b.paid) throw ApiError.badRequest(`${money(a.amount)} is more than the ${money(b.payable - b.paid)} due on ${b.number}`);
+    if (String(b.vendor) !== String(vendor._id)) throw ApiError.badRequest('{number} belongs to a different vendor', { params: { number: b.number } });
+    if (!OPEN_BILL.includes(b.status)) throw ApiError.conflict('{number} is {status}', { params: { number: b.number, status: b.status } });
+    if (a.amount > b.payable - b.paid) throw ApiError.badRequest('{amount} is more than the {due} due on {number}', { params: { amount: money(a.amount), due: money(b.payable - b.paid), number: b.number } });
   }
 
   // Apply bill by bill; undo what was applied if any bill refuses (concurrent payment).
@@ -355,7 +355,7 @@ export async function runRecurringNow(ctx, id) {
   if (!template.active) throw ApiError.conflict('Template is paused');
   const period = localPeriod();
   const bill = await generateFor(ctx, template, period);
-  if (!bill) throw ApiError.conflict(`The bill for ${period} already exists`);
+  if (!bill) throw ApiError.conflict('The bill for {period} already exists', { params: { period } });
   return getBill(ctx, bill._id);
 }
 

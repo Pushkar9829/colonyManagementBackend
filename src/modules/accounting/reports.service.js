@@ -32,7 +32,7 @@ const zero = { debit: 0, credit: 0 };
 export async function ledger(ctx, { code, from, to }) {
   const accounts = await accountsByCode(ctx.societyId);
   const account = accounts.get(code);
-  if (!account) throw ApiError.notFound(`Account ${code} not found`);
+  if (!account) throw ApiError.notFound('Account {code} not found', { params: { code } });
   const range = resolveRange({ from, to });
   const before = await balancesByCode(ctx.societyId, { to: dayBefore(range.from) });
   const opening = naturalBalance(account.type, before.get(code));
@@ -189,8 +189,8 @@ export async function fundBalances(ctx, { from, to }) {
 export async function cashBankBook(ctx, { from, to, code }) {
   const accounts = await accountsByCode(ctx.societyId);
   const books = [...accounts.values()].filter((a) => (code ? a.code === code : a.isBank || a.isCash)).sort(byCode);
-  if (code && !books.length) throw ApiError.notFound(`Account ${code} not found`);
-  if (code && !(books[0].isBank || books[0].isCash)) throw ApiError.badRequest(`${code} is not a cash or bank account`);
+  if (code && !books.length) throw ApiError.notFound('Account {code} not found', { params: { code } });
+  if (code && !(books[0].isBank || books[0].isCash)) throw ApiError.badRequest('{code} is not a cash or bank account', { params: { code } });
   const range = resolveRange({ from, to });
   const out = [];
   for (const a of books) {

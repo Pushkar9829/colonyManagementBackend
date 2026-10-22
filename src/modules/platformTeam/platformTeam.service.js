@@ -142,7 +142,7 @@ async function assertAnotherActiveOwner(target) {
 }
 
 function assertNotSelf(ctx, target, what) {
-  if (sameId(ctx.userId, target._id)) throw ApiError.badRequest(`You can't ${what} yourself. Ask another owner or team manager.`);
+  if (sameId(ctx.userId, target._id)) throw ApiError.badRequest("You can't {action} yourself. Ask another owner or team manager.", { params: { action: what } });
 }
 
 function assertCanTouch(ctx, target) {

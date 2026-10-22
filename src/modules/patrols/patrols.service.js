@@ -142,7 +142,7 @@ export async function scan(ctx, { code, lat, lng, accuracyM, occurredAt, note })
   if (!at) throw ApiError.badRequest('This scan is too old to record');
   const cp = await Checkpoint.findOne({ society: ctx.societyId, code: parseCode(code) }).lean();
   if (!cp) throw ApiError.notFound('Unknown checkpoint QR');
-  if (!cp.active) throw ApiError.badRequest(`${cp.name} is not in use`);
+  if (!cp.active) throw ApiError.badRequest('{name} is not in use', { params: { name: cp.name } });
 
   let gpsOk = null;
   let dist;
@@ -177,7 +177,7 @@ export async function scan(ctx, { code, lat, lng, accuracyM, occurredAt, note })
     if (route.enforceOrder && !inOrder) {
       // eslint-disable-next-line no-await-in-loop
       const next = await Checkpoint.findById(expectedNext).select('name').lean();
-      throw ApiError.conflict(`Scan ${next?.name || 'the next checkpoint'} first — this route must be walked in order`);
+      throw ApiError.conflict('Scan {checkpoint} first — this route must be walked in order', { params: { checkpoint: next?.name || 'the next checkpoint' } });
     }
     const scansCount = done.size + 1;
     const complete = route.checkpoints.every((c) => done.has(String(c)) || String(c) === String(cp._id));

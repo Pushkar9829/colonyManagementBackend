@@ -52,7 +52,7 @@ export async function readSheet(file) {
     });
     if (filled) rows.push(obj);
   });
-  if (rows.length > MAX_SHEET_ROWS) throw ApiError.badRequest(`At most ${MAX_SHEET_ROWS} rows per file`);
+  if (rows.length > MAX_SHEET_ROWS) throw ApiError.badRequest('At most {max} rows per file', { params: { max: MAX_SHEET_ROWS } });
   return rows;
 }
 
